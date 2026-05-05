@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="KeyboardBubble/KeyboardBubble.vcxproj" Id="677867e4-e3de-43cb-9e93-ae306c615ec8" />
+</Solution>
