@@ -180,18 +180,17 @@ string ReadFileUtf8(const wstring& filePath) {
 }
 
 string FindValueByKey(const string& json, const string& keyName) {
-    string searchPattern = "\"" + keyName + "\":{";
-    size_t pos = json.find(searchPattern);
-    if (pos == string::npos) return "";
-    size_t valuePos = json.find("\"value\"", pos);
+    size_t keyPos = json.find("\"" + keyName + "\"");
+    if (keyPos == string::npos) return "";
+    size_t valuePos = json.find("\"value\"", keyPos);
     if (valuePos == string::npos) return "";
-    size_t colonPos = json.find(":", valuePos);
+    size_t colonPos = json.find(':', valuePos);
     if (colonPos == string::npos) return "";
     colonPos++;
     while (colonPos < json.length() && isspace((unsigned char)json[colonPos])) colonPos++;
     if (colonPos >= json.length() || json[colonPos] != '"') return "";
     colonPos++;
-    size_t endQuote = json.find("\"", colonPos);
+    size_t endQuote = json.find('"', colonPos);
     if (endQuote == string::npos) return "";
     return json.substr(colonPos, endQuote - colonPos);
 }
@@ -250,6 +249,12 @@ bool LoadStyleConfig() {
     if (g_styleConfig.bgAlpha < 0) g_styleConfig.bgAlpha = 0;
     if (g_styleConfig.bgAlpha > 255) g_styleConfig.bgAlpha = 255;
     return true;
+}
+
+void ApplyStyleToWindows() {
+    BYTE alpha = (BYTE)g_styleConfig.bgAlpha;
+    if (g_hAboutWnd) SetLayeredWindowAttributes(g_hAboutWnd, 0, alpha, LWA_ALPHA);
+    if (g_hSettingsWnd) SetLayeredWindowAttributes(g_hSettingsWnd, 0, alpha, LWA_ALPHA);
 }
 
 bool SaveStyleConfig() {
@@ -330,20 +335,20 @@ void LoadConfigForApp(LPCWSTR appName) {
 }
 
 void ComputeBubbleSize(int& outWidth, int& outHeight) {
+    RECT wa; SystemParametersInfo(SPI_GETWORKAREA, 0, &wa, 0);
     const int leftPadding = 20;
     const int rightPadding = 20;
     const int topPadding = 35;
     const int bottomPadding = 20;
-    const int minWidth = 320;
+    outWidth = wa.right - wa.left;
     if (g_currentConfig.keys.empty()) {
-        outWidth = minWidth;
         outHeight = (int)(topPadding + CARD_HEIGHT + bottomPadding);
         return;
     }
     HDC hdc = GetDC(NULL);
     Graphics g(hdc);
     Font cardFont(L"Microsoft YaHei", g_styleConfig.cardFontSize);
-    int x = leftPadding, y = topPadding, maxY = y, maxRight = leftPadding;
+    int x = leftPadding, y = topPadding, maxY = y;
     for (auto& item : g_currentConfig.keys) {
         wstring fullTxt;
         for (int i = 0; i < (int)item.keys.size(); i++) { if (i > 0) fullTxt += L" + "; fullTxt += item.keys[i]; }
@@ -351,13 +356,11 @@ void ComputeBubbleSize(int& outWidth, int& outHeight) {
         RectF textBounds;
         g.MeasureString(fullTxt.c_str(), (int)fullTxt.size(), &cardFont, PointF(0, 0), &textBounds);
         int cardWidth = (int)(textBounds.Width + CARD_PADDING * 2 + 4);
-        if (x + cardWidth + CARD_MARGIN > 1920) { x = leftPadding; y += CARD_HEIGHT + LINE_SPACING; }
+        if (x + cardWidth + CARD_MARGIN > outWidth - rightPadding) { x = leftPadding; y += CARD_HEIGHT + LINE_SPACING; }
         if (y + CARD_HEIGHT > maxY) maxY = y + CARD_HEIGHT;
-        if (x + cardWidth > maxRight) maxRight = x + cardWidth;
         x += cardWidth + CARD_MARGIN;
     }
     ReleaseDC(NULL, hdc);
-    outWidth = max(minWidth, maxRight + rightPadding);
     outHeight = maxY + bottomPadding;
 }
 
@@ -705,8 +708,7 @@ LRESULT CALLBACK SettingsWndProc(HWND h, UINT msg, WPARAM w, LPARAM l) {
             if (g_styleConfig.bgAlpha > 255) g_styleConfig.bgAlpha = 255;
             SaveStyleConfig();
             LoadStyleConfig();
-            if (g_hAboutWnd) SetLayeredWindowAttributes(g_hAboutWnd, 0, (BYTE)g_styleConfig.bgAlpha, LWA_ALPHA);
-            if (g_hSettingsWnd) SetLayeredWindowAttributes(g_hSettingsWnd, 0, (BYTE)g_styleConfig.bgAlpha, LWA_ALPHA);
+            ApplyStyleToWindows();
             if (g_visible) RenderWithLayeredWindow();
             DestroyWindow(h);
             return 0;
