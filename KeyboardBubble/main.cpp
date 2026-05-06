@@ -270,11 +270,48 @@ string WStringToUtf8(const wstring& str) {
     return res;
 }
 
-bool LoadStyleConfig() {
+wstring JoinKeysText(const vector<wstring>& keys) {
+    wstring text;
+    for (size_t i = 0; i < keys.size(); ++i) {
+        if (i > 0) text += L" + ";
+        text += keys[i];
+    }
+    return text;
+}
+
+wstring BuildShortcutText(const ShortcutItem& item) {
+    return JoinKeysText(item.keys) + L"：" + item.desc;
+}
+
+Color ToGdiColor(const ColorConfig& c) {
+    return Color(c.r, c.g, c.b);
+}
+
+Color ToGdiColor(int alpha, const ColorConfig& c) {
+    return Color(alpha, c.r, c.g, c.b);
+}
+
+void SetWindowAlpha(HWND hWnd, BYTE alpha) {
+    if (hWnd) SetLayeredWindowAttributes(hWnd, 0, alpha, LWA_ALPHA);
+}
+
+wstring BuildSettingPath() {
     WCHAR baseDir[256] = { 0 };
     GetExeDir(baseDir, 256);
     WCHAR configPath[512] = { 0 };
     swprintf_s(configPath, L"%s\\%s", baseDir, kSettingFileName);
+    return configPath;
+}
+
+wstring BuildKeyboardPath(const wchar_t* fileName) {
+    WCHAR baseDir[256] = { 0 };
+    GetExeDir(baseDir, 256);
+    WCHAR path[512] = { 0 };
+    swprintf_s(path, L"%s\\keyboards\\%s", baseDir, fileName);
+    return path;
+}
+
+bool LoadStyleConfig() {
     auto applyDefaults = []() {
         g_styleConfig.bgColor = { 2, 57, 12 };
         g_styleConfig.activeTextColor = { 255, 60, 60 };
@@ -284,24 +321,37 @@ bool LoadStyleConfig() {
         g_styleConfig.bgAlpha = 200;
     };
     applyDefaults();
+
+    wstring configPath = BuildSettingPath();
     string json;
-    if (!FileExists(configPath)) {
+    if (!FileExists(configPath.c_str()) || (json = ReadFileUtf8(configPath)).empty()) {
         WriteTextUtf8(configPath, kDefaultStyleSettingText);
         json = WStringToUtf8(kDefaultStyleSettingText);
-    } else {
-        json = ReadFileUtf8(configPath);
-        if (json.empty()) {
-            WriteTextUtf8(configPath, kDefaultStyleSettingText);
-            json = WStringToUtf8(kDefaultStyleSettingText);
-        }
     }
-    string valStr; float fVal; int iVal; ColorConfig color;
-    valStr = FindValueByKey(json, "titleFontSize"); if (ParseFloat(valStr, fVal)) g_styleConfig.titleFontSize = fVal;
-    valStr = FindValueByKey(json, "cardFontSize"); if (ParseFloat(valStr, fVal)) g_styleConfig.cardFontSize = fVal;
-    valStr = FindValueByKey(json, "bgAlpha"); if (ParseInt(valStr, iVal)) g_styleConfig.bgAlpha = iVal;
-    valStr = FindValueByKey(json, "bgColor"); if (ParseColor(valStr, color)) g_styleConfig.bgColor = color;
-    valStr = FindValueByKey(json, "activeTextColor"); if (ParseColor(valStr, color)) g_styleConfig.activeTextColor = color;
-    valStr = FindValueByKey(json, "normalTextColor"); if (ParseColor(valStr, color)) g_styleConfig.normalTextColor = color;
+
+    auto applyFloat = [&](const char* key, float& target) {
+        string valStr; float fVal;
+        valStr = FindValueByKey(json, key);
+        if (ParseFloat(valStr, fVal)) target = fVal;
+    };
+    auto applyInt = [&](const char* key, int& target) {
+        string valStr; int iVal;
+        valStr = FindValueByKey(json, key);
+        if (ParseInt(valStr, iVal)) target = iVal;
+    };
+    auto applyColor = [&](const char* key, ColorConfig& target) {
+        string valStr; ColorConfig color;
+        valStr = FindValueByKey(json, key);
+        if (ParseColor(valStr, color)) target = color;
+    };
+
+    applyFloat("titleFontSize", g_styleConfig.titleFontSize);
+    applyFloat("cardFontSize", g_styleConfig.cardFontSize);
+    applyInt("bgAlpha", g_styleConfig.bgAlpha);
+    applyColor("bgColor", g_styleConfig.bgColor);
+    applyColor("activeTextColor", g_styleConfig.activeTextColor);
+    applyColor("normalTextColor", g_styleConfig.normalTextColor);
+
     if (g_styleConfig.bgAlpha < 0) g_styleConfig.bgAlpha = 0;
     if (g_styleConfig.bgAlpha > 255) g_styleConfig.bgAlpha = 255;
     return true;
@@ -314,10 +364,6 @@ void ApplyStyleToWindows() {
 }
 
 bool SaveStyleConfig() {
-    WCHAR baseDir[256] = { 0 };
-    GetExeDir(baseDir, 256);
-    WCHAR configPath[512] = { 0 };
-    swprintf_s(configPath, L"%s\\%s", baseDir, kSettingFileName);
     wstring text;
     text += L"{\n";
     text += L"  \"titleFontSize\": { \"name\": \"titleFontSize\", \"description\": \"标题字体大小\", \"value\": \"" + to_wstring(g_styleConfig.titleFontSize) + L"\" },\n";
@@ -327,13 +373,14 @@ bool SaveStyleConfig() {
     text += L"  \"activeTextColor\": { \"name\": \"activeTextColor\", \"description\": \"高亮文字颜色\", \"value\": \"" + to_wstring(g_styleConfig.activeTextColor.r) + L"," + to_wstring(g_styleConfig.activeTextColor.g) + L"," + to_wstring(g_styleConfig.activeTextColor.b) + L"\" },\n";
     text += L"  \"normalTextColor\": { \"name\": \"normalTextColor\", \"description\": \"普通文字颜色\", \"value\": \"" + to_wstring(g_styleConfig.normalTextColor.r) + L"," + to_wstring(g_styleConfig.normalTextColor.g) + L"," + to_wstring(g_styleConfig.normalTextColor.b) + L"\" }\n";
     text += L"}\n";
-    return WriteTextUtf8(configPath, text);
+    return WriteTextUtf8(BuildSettingPath(), text);
 }
 
 bool LoadConfigByPath(LPCWSTR path, AppConfig& cfg) {
     cfg.keys.clear();
     ifstream ifs(path);
     if (!ifs) return false;
+
     string json((istreambuf_iterator<char>(ifs)), istreambuf_iterator<char>());
     string& s = json;
     size_t p = 0;
@@ -344,6 +391,20 @@ bool LoadConfigByPath(LPCWSTR path, AppConfig& cfg) {
         size_t b = s.find("\"", a + 1);
         return s.substr(a + 1, b - a - 1);
     };
+    auto parseQuotedArray = [&](const string& arr) {
+        vector<wstring> result;
+        size_t ap = 0;
+        while (true) {
+            size_t a = arr.find("\"", ap);
+            if (a == string::npos) break;
+            size_t b = arr.find("\"", a + 1);
+            if (b == string::npos) break;
+            result.push_back(UTF8ToWString(arr.substr(a + 1, b - a - 1)));
+            ap = b + 1;
+        }
+        return result;
+    };
+
     cfg.name = UTF8ToWString(getStr("\"name\""));
     cfg.description = UTF8ToWString(getStr("\"description\""));
     p = s.find("\"keys\"", p);
@@ -356,17 +417,11 @@ bool LoadConfigByPath(LPCWSTR path, AppConfig& cfg) {
         if (kp != string::npos) {
             size_t arrStart = s.find("[", kp);
             size_t arrEnd = s.find("]", arrStart);
-            string arr = s.substr(arrStart + 1, arrEnd - arrStart - 1);
-            size_t ap = 0;
-            while (true) {
-                size_t a = arr.find("\"", ap);
-                if (a == string::npos) break;
-                size_t b = arr.find("\"", a + 1);
-                if (b == string::npos) break;
-                item.keys.push_back(UTF8ToWString(arr.substr(a + 1, b - a - 1)));
-                ap = b + 1;
+            if (arrStart != string::npos && arrEnd != string::npos) {
+                string arr = s.substr(arrStart + 1, arrEnd - arrStart - 1);
+                item.keys = parseQuotedArray(arr);
+                p = arrEnd + 1;
             }
-            p = arrEnd + 1;
         }
         item.desc = UTF8ToWString(getStr("\"description\""));
         if (!item.keys.empty()) cfg.keys.push_back(item);
@@ -378,15 +433,12 @@ void LoadConfigForApp(LPCWSTR appName) {
     WCHAR baseDir[256] = { 0 };
     GetExeDir(baseDir, 256);
     if (g_keyWin && !g_keyCtrl && !g_keyAlt && !g_keyShift) {
-        WCHAR winPath[512] = { 0 };
-        swprintf_s(winPath, L"%s\\keyboards\\windows.json", baseDir);
-        if (FileExists(winPath)) { LoadConfigByPath(winPath, g_currentConfig); return; }
+        wstring winPath = BuildKeyboardPath(L"windows.json");
+        if (FileExists(winPath.c_str())) { LoadConfigByPath(winPath.c_str(), g_currentConfig); return; }
     }
-    WCHAR appPath[512] = { 0 };
-    swprintf_s(appPath, L"%s\\keyboards\\%s.json", baseDir, appName);
-    WCHAR defPath[512] = { 0 };
-    swprintf_s(defPath, L"%s\\keyboards\\default.exe.json", baseDir);
-    if (FileExists(appPath)) LoadConfigByPath(appPath, g_currentConfig); else LoadConfigByPath(defPath, g_currentConfig);
+    wstring appPath = BuildKeyboardPath((wstring(appName) + L".json").c_str());
+    wstring defPath = BuildKeyboardPath(L"default.exe.json");
+    if (FileExists(appPath.c_str())) LoadConfigByPath(appPath.c_str(), g_currentConfig); else LoadConfigByPath(defPath.c_str(), g_currentConfig);
 }
 
 void ComputeBubbleSize(int& outWidth, int& outHeight) {
@@ -405,9 +457,7 @@ void ComputeBubbleSize(int& outWidth, int& outHeight) {
     Font cardFont(L"Microsoft YaHei", g_styleConfig.cardFontSize);
     int x = leftPadding, y = topPadding, maxY = y;
     for (auto& item : g_currentConfig.keys) {
-        wstring fullTxt;
-        for (int i = 0; i < (int)item.keys.size(); i++) { if (i > 0) fullTxt += L" + "; fullTxt += item.keys[i]; }
-        fullTxt += L"：" + item.desc;
+        wstring fullTxt = BuildShortcutText(item);
         RectF textBounds;
         g.MeasureString(fullTxt.c_str(), (int)fullTxt.size(), &cardFont, PointF(0, 0), &textBounds);
         int cardWidth = (int)(textBounds.Width + CARD_PADDING * 2 + 4);
@@ -481,13 +531,12 @@ void RenderWithLayeredWindow() {
     g.SetCompositingMode(CompositingModeSourceOver);
     g.SetCompositingQuality(CompositingQualityHighQuality);
     g.Clear(Color(0, 0, 0, 0));
-    Color bgColor(g_styleConfig.bgAlpha, g_styleConfig.bgColor.r, g_styleConfig.bgColor.g, g_styleConfig.bgColor.b);
-    SolidBrush bgBrush(bgColor);
+    SolidBrush bgBrush(ToGdiColor(g_styleConfig.bgAlpha, g_styleConfig.bgColor));
     g.FillRectangle(&bgBrush, 0, 0, g_windowWidth, g_windowHeight);
     Font titleFont(L"Microsoft YaHei", g_styleConfig.titleFontSize);
     Font cardFont(L"Microsoft YaHei", g_styleConfig.cardFontSize);
-    SolidBrush normalText(Color(g_styleConfig.normalTextColor.r, g_styleConfig.normalTextColor.g, g_styleConfig.normalTextColor.b));
-    SolidBrush activeText(Color(g_styleConfig.activeTextColor.r, g_styleConfig.activeTextColor.g, g_styleConfig.activeTextColor.b));
+    SolidBrush normalText(ToGdiColor(g_styleConfig.normalTextColor));
+    SolidBrush activeText(ToGdiColor(g_styleConfig.activeTextColor));
     Pen borderPen(Color(120, 255, 255, 255), 1.0f);
     wstring title = g_currentConfig.name + L" (" + g_currentConfig.description + L")";
     g.DrawString(title.c_str(), (int)title.size(), &titleFont, PointF(20, 10), &normalText);
@@ -628,12 +677,12 @@ LRESULT CALLBACK AboutWndProc(HWND h, UINT msg, WPARAM w, LPARAM l) {
         HDC hdc = (msg == WM_PAINT) ? BeginPaint(h, &ps) : GetDC(h);
         Graphics g(hdc);
         g.SetSmoothingMode(SmoothingModeAntiAlias);
-        g.Clear(Color(g_styleConfig.bgAlpha, g_styleConfig.bgColor.r, g_styleConfig.bgColor.g, g_styleConfig.bgColor.b));
+        g.Clear(ToGdiColor(g_styleConfig.bgAlpha, g_styleConfig.bgColor));
         Pen borderPen(Color(255, 255, 255, 255), 2.0f);
         g.DrawRectangle(&borderPen, 1, 1, 357, 227);
         Font titleFont(L"Microsoft YaHei", g_styleConfig.titleFontSize + 4.0f, FontStyleBold);
         Font bodyFont(L"Microsoft YaHei", g_styleConfig.cardFontSize + 2.0f);
-        SolidBrush textBrush(Color(g_styleConfig.normalTextColor.r, g_styleConfig.normalTextColor.g, g_styleConfig.normalTextColor.b));
+        SolidBrush textBrush(ToGdiColor(g_styleConfig.normalTextColor));
         g.DrawString(L"关于", -1, &titleFont, PointF(20, 18), &textBrush);
         g.DrawString(L"软件名称：KeyboardBubble", -1, &bodyFont, PointF(20, 62), &textBrush);
         g.DrawString(L"软件作用：按住组合键时显示快捷键提示", -1, &bodyFont, PointF(20, 92), &textBrush);
@@ -707,11 +756,11 @@ LRESULT CALLBACK SettingsWndProc(HWND h, UINT msg, WPARAM w, LPARAM l) {
         HDC hdc = BeginPaint(h, &ps);
         Graphics g(hdc);
         g.SetSmoothingMode(SmoothingModeAntiAlias);
-        g.Clear(Color(g_styleConfig.bgAlpha, g_styleConfig.bgColor.r, g_styleConfig.bgColor.g, g_styleConfig.bgColor.b));
+        g.Clear(ToGdiColor(g_styleConfig.bgAlpha, g_styleConfig.bgColor));
         Pen borderPen(Color(255, 255, 255, 255), 2.0f);
         g.DrawRectangle(&borderPen, 1, 1, 537, 387);
         Font titleFont(L"Microsoft YaHei", g_styleConfig.titleFontSize + 4.0f, FontStyleBold);
-        SolidBrush textBrush(Color(g_styleConfig.normalTextColor.r, g_styleConfig.normalTextColor.g, g_styleConfig.normalTextColor.b));
+        SolidBrush textBrush(ToGdiColor(g_styleConfig.normalTextColor));
         g.DrawString(L"设置", -1, &titleFont, PointF(22, 16), &textBrush);
         EndPaint(h, &ps);
         return 0;
