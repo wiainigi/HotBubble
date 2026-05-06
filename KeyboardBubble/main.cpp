@@ -69,6 +69,29 @@ struct StyleConfig {
     ColorConfig normalTextColor;
 };
 
+struct SettingMeta {
+    const wchar_t* key;
+    const wchar_t* description;
+};
+
+static const SettingMeta kStyleSettingMeta[] = {
+    {L"titleFontSize", L"标题字体大小"},
+    {L"cardFontSize", L"卡片字体大小"},
+    {L"bgAlpha", L"背景透明度"},
+    {L"bgColor", L"背景颜色"},
+    {L"activeTextColor", L"高亮文字颜色"},
+    {L"normalTextColor", L"普通文字颜色"},
+};
+
+static const wchar_t* kDefaultStyleSettingText = LR"JSON({
+  "titleFontSize": { "name": "titleFontSize", "description": "标题字体大小", "value": "10" },
+  "cardFontSize": { "name": "cardFontSize", "description": "卡片字体大小", "value": "8" },
+  "bgAlpha": { "name": "bgAlpha", "description": "背景透明度", "value": "200" },
+  "bgColor": { "name": "bgColor", "description": "背景颜色", "value": "0,0,0" },
+  "activeTextColor": { "name": "activeTextColor", "description": "高亮文字颜色", "value": "255,60,60" },
+  "normalTextColor": { "name": "normalTextColor", "description": "普通文字颜色", "value": "255,255,255" }
+})JSON";
+
 HINSTANCE g_hInst;
 HWND g_hMainWnd = NULL;
 HWND g_hFloatWnd = NULL;
@@ -179,6 +202,19 @@ string ReadFileUtf8(const wstring& filePath) {
     return content;
 }
 
+bool WriteTextUtf8(const wstring& filePath, const wstring& text) {
+    int len = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, NULL, 0, NULL, NULL);
+    if (len <= 0) return false;
+    string utf8(len - 1, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, utf8.data(), len, NULL, NULL);
+    HANDLE hFile = CreateFileW(filePath.c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) return false;
+    DWORD written = 0;
+    BOOL ok = WriteFile(hFile, utf8.data(), (DWORD)utf8.size(), &written, NULL);
+    CloseHandle(hFile);
+    return ok && written == utf8.size();
+}
+
 string FindValueByKey(const string& json, const string& keyName) {
     size_t keyPos = json.find("\"" + keyName + "\"");
     if (keyPos == string::npos) return "";
@@ -225,20 +261,40 @@ wstring UTF8ToWString(const string& str) {
     return res;
 }
 
+string WStringToUtf8(const wstring& str) {
+    if (str.empty()) return "";
+    int len = WideCharToMultiByte(CP_UTF8, 0, str.c_str(), -1, NULL, 0, NULL, NULL);
+    if (len <= 0) return "";
+    string res(len - 1, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, str.c_str(), -1, res.data(), len, NULL, NULL);
+    return res;
+}
+
 bool LoadStyleConfig() {
     WCHAR baseDir[256] = { 0 };
     GetExeDir(baseDir, 256);
     WCHAR configPath[512] = { 0 };
     swprintf_s(configPath, L"%s\\%s", baseDir, kSettingFileName);
-    g_styleConfig.bgColor = { 0, 0, 0 };
-    g_styleConfig.activeTextColor = { 255, 60, 60 };
-    g_styleConfig.normalTextColor = { 255, 255, 255 };
-    g_styleConfig.titleFontSize = 10.0f;
-    g_styleConfig.cardFontSize = 8.0f;
-    g_styleConfig.bgAlpha = 200;
-    if (!FileExists(configPath)) return true;
-    string json = ReadFileUtf8(configPath);
-    if (json.empty()) return true;
+    auto applyDefaults = []() {
+        g_styleConfig.bgColor = { 2, 57, 12 };
+        g_styleConfig.activeTextColor = { 255, 60, 60 };
+        g_styleConfig.normalTextColor = { 255, 255, 255 };
+        g_styleConfig.titleFontSize = 10.0f;
+        g_styleConfig.cardFontSize = 8.0f;
+        g_styleConfig.bgAlpha = 200;
+    };
+    applyDefaults();
+    string json;
+    if (!FileExists(configPath)) {
+        WriteTextUtf8(configPath, kDefaultStyleSettingText);
+        json = WStringToUtf8(kDefaultStyleSettingText);
+    } else {
+        json = ReadFileUtf8(configPath);
+        if (json.empty()) {
+            WriteTextUtf8(configPath, kDefaultStyleSettingText);
+            json = WStringToUtf8(kDefaultStyleSettingText);
+        }
+    }
     string valStr; float fVal; int iVal; ColorConfig color;
     valStr = FindValueByKey(json, "titleFontSize"); if (ParseFloat(valStr, fVal)) g_styleConfig.titleFontSize = fVal;
     valStr = FindValueByKey(json, "cardFontSize"); if (ParseFloat(valStr, fVal)) g_styleConfig.cardFontSize = fVal;
@@ -262,17 +318,16 @@ bool SaveStyleConfig() {
     GetExeDir(baseDir, 256);
     WCHAR configPath[512] = { 0 };
     swprintf_s(configPath, L"%s\\%s", baseDir, kSettingFileName);
-    wofstream ofs(configPath, ios::binary);
-    if (!ofs) return false;
-    ofs << L"{\n";
-    ofs << L"  \"titleFontSize\": { \"value\": \"" << g_styleConfig.titleFontSize << L"\" },\n";
-    ofs << L"  \"cardFontSize\": { \"value\": \"" << g_styleConfig.cardFontSize << L"\" },\n";
-    ofs << L"  \"bgAlpha\": { \"value\": \"" << g_styleConfig.bgAlpha << L"\" },\n";
-    ofs << L"  \"bgColor\": { \"value\": \"" << g_styleConfig.bgColor.r << L"," << g_styleConfig.bgColor.g << L"," << g_styleConfig.bgColor.b << L"\" },\n";
-    ofs << L"  \"activeTextColor\": { \"value\": \"" << g_styleConfig.activeTextColor.r << L"," << g_styleConfig.activeTextColor.g << L"," << g_styleConfig.activeTextColor.b << L"\" },\n";
-    ofs << L"  \"normalTextColor\": { \"value\": \"" << g_styleConfig.normalTextColor.r << L"," << g_styleConfig.normalTextColor.g << L"," << g_styleConfig.normalTextColor.b << L"\" }\n";
-    ofs << L"}\n";
-    return true;
+    wstring text;
+    text += L"{\n";
+    text += L"  \"titleFontSize\": { \"name\": \"titleFontSize\", \"description\": \"标题字体大小\", \"value\": \"" + to_wstring(g_styleConfig.titleFontSize) + L"\" },\n";
+    text += L"  \"cardFontSize\": { \"name\": \"cardFontSize\", \"description\": \"卡片字体大小\", \"value\": \"" + to_wstring(g_styleConfig.cardFontSize) + L"\" },\n";
+    text += L"  \"bgAlpha\": { \"name\": \"bgAlpha\", \"description\": \"背景透明度\", \"value\": \"" + to_wstring(g_styleConfig.bgAlpha) + L"\" },\n";
+    text += L"  \"bgColor\": { \"name\": \"bgColor\", \"description\": \"背景颜色\", \"value\": \"" + to_wstring(g_styleConfig.bgColor.r) + L"," + to_wstring(g_styleConfig.bgColor.g) + L"," + to_wstring(g_styleConfig.bgColor.b) + L"\" },\n";
+    text += L"  \"activeTextColor\": { \"name\": \"activeTextColor\", \"description\": \"高亮文字颜色\", \"value\": \"" + to_wstring(g_styleConfig.activeTextColor.r) + L"," + to_wstring(g_styleConfig.activeTextColor.g) + L"," + to_wstring(g_styleConfig.activeTextColor.b) + L"\" },\n";
+    text += L"  \"normalTextColor\": { \"name\": \"normalTextColor\", \"description\": \"普通文字颜色\", \"value\": \"" + to_wstring(g_styleConfig.normalTextColor.r) + L"," + to_wstring(g_styleConfig.normalTextColor.g) + L"," + to_wstring(g_styleConfig.normalTextColor.b) + L"\" }\n";
+    text += L"}\n";
+    return WriteTextUtf8(configPath, text);
 }
 
 bool LoadConfigByPath(LPCWSTR path, AppConfig& cfg) {
@@ -623,30 +678,19 @@ static ColorConfig GetColorFromEdit(HWND h, int id) {
 LRESULT CALLBACK SettingsWndProc(HWND h, UINT msg, WPARAM w, LPARAM l) {
     switch (msg) {
     case WM_CREATE: {
-        // CreateWindowW(L"STATIC", L"设置", WS_CHILD | WS_VISIBLE, 20, 14, 120, 28, h, NULL, g_hInst, NULL);
         CreateWindowW(L"BUTTON", L"×", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 500, 10, 24, 24, h, (HMENU)ID_BTN_CANCEL, g_hInst, NULL);
         int x1 = 22, x2 = 210, y = 58, gap = 36;
-        CreateWindowW(L"STATIC", L"标题字体大小", WS_CHILD | WS_VISIBLE, x1, y, 120, 20, h, NULL, g_hInst, NULL);
-        FillEdit(h, x2, y - 2, 130, IDC_EDIT_TITLE_FONT, L"");
-        y += gap;
-        CreateWindowW(L"STATIC", L"卡片字体大小", WS_CHILD | WS_VISIBLE, x1, y, 120, 20, h, NULL, g_hInst, NULL);
-        FillEdit(h, x2, y - 2, 130, IDC_EDIT_CARD_FONT, L"");
-        y += gap;
-        CreateWindowW(L"STATIC", L"背景透明度", WS_CHILD | WS_VISIBLE, x1, y, 120, 20, h, NULL, g_hInst, NULL);
-        FillEdit(h, x2, y - 2, 130, IDC_EDIT_BG_ALPHA, L"");
-        y += gap;
-        CreateWindowW(L"STATIC", L"背景颜色(r,g,b)", WS_CHILD | WS_VISIBLE, x1, y, 120, 20, h, NULL, g_hInst, NULL);
-        FillEdit(h, x2, y - 2, 130, IDC_EDIT_BG_COLOR, L"");
-        FillButton(h, L"选择", 352, y - 2, 70, IDC_BTN_BG_COLOR);
-        y += gap;
-        CreateWindowW(L"STATIC", L"高亮文字颜色", WS_CHILD | WS_VISIBLE, x1, y, 120, 20, h, NULL, g_hInst, NULL);
-        FillEdit(h, x2, y - 2, 130, IDC_EDIT_ACTIVE_COLOR, L"");
-        FillButton(h, L"选择", 352, y - 2, 70, IDC_BTN_ACTIVE_COLOR);
-        y += gap;
-        CreateWindowW(L"STATIC", L"普通文字颜色", WS_CHILD | WS_VISIBLE, x1, y, 120, 20, h, NULL, g_hInst, NULL);
-        FillEdit(h, x2, y - 2, 130, IDC_EDIT_NORMAL_COLOR, L"");
-        FillButton(h, L"选择", 352, y - 2, 70, IDC_BTN_NORMAL_COLOR);
-        y += 58;
+        for (const auto& item : kStyleSettingMeta) {
+            CreateWindowW(L"STATIC", item.description, WS_CHILD | WS_VISIBLE, x1, y, 120, 20, h, NULL, g_hInst, NULL);
+            if (wcscmp(item.key, L"titleFontSize") == 0) FillEdit(h, x2, y - 2, 130, IDC_EDIT_TITLE_FONT, L"");
+            else if (wcscmp(item.key, L"cardFontSize") == 0) FillEdit(h, x2, y - 2, 130, IDC_EDIT_CARD_FONT, L"");
+            else if (wcscmp(item.key, L"bgAlpha") == 0) FillEdit(h, x2, y - 2, 130, IDC_EDIT_BG_ALPHA, L"");
+            else if (wcscmp(item.key, L"bgColor") == 0) { FillEdit(h, x2, y - 2, 130, IDC_EDIT_BG_COLOR, L""); FillButton(h, L"选择", 352, y - 2, 70, IDC_BTN_BG_COLOR); }
+            else if (wcscmp(item.key, L"activeTextColor") == 0) { FillEdit(h, x2, y - 2, 130, IDC_EDIT_ACTIVE_COLOR, L""); FillButton(h, L"选择", 352, y - 2, 70, IDC_BTN_ACTIVE_COLOR); }
+            else if (wcscmp(item.key, L"normalTextColor") == 0) { FillEdit(h, x2, y - 2, 130, IDC_EDIT_NORMAL_COLOR, L""); FillButton(h, L"选择", 352, y - 2, 70, IDC_BTN_NORMAL_COLOR); }
+            y += gap;
+        }
+        y += 22;
         FillButton(h, L"确定", 200, y, 70, ID_BTN_OK);
         FillButton(h, L"取消", 290, y, 70, ID_BTN_CANCEL);
         SetEditTextFloat(h, IDC_EDIT_TITLE_FONT, g_styleConfig.titleFontSize);
