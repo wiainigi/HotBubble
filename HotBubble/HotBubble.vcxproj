@@ -137,12 +137,14 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="AboutWindow.cpp" />
+    <ClCompile Include="BubbleWindow.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="SettingWindow.cpp" />
     <ClCompile Include="config.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AboutWindow.h" />
+    <ClInclude Include="BubbleWindow.h" />
     <ClInclude Include="config.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="SettingWindow.h" />

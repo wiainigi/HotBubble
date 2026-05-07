@@ -7,6 +7,7 @@
 // 自定义头文件，声明设置窗口的打开函数OpenSettingWindow()
 #include "SettingWindow.h" 
 #include "AboutWindow.h"
+#include "BubbleWindow.h"
 
 // 链接shell32.lib，提供Shell API函数实现（如Shell_NotifyIcon）
 #pragma comment(lib, "shell32.lib")
@@ -48,6 +49,14 @@ NOTIFYICONDATA g_nid = { 0 };
 // 应用程序实例句柄，由WinMain传入，用于加载资源（图标等）
 HINSTANCE g_hInst = NULL;
 
+extern int      g_nTitleSize;
+extern int      g_nLabelSize;
+extern int      g_nBgAlpha;
+extern COLORREF g_crTitle;
+extern COLORREF g_crLabel;
+extern COLORREF g_crBg;
+extern COLORREF g_crMark;
+
 // ---------------------- 程序入口点 ----------------------
 // wWinMain是Windows GUI应用程序的标准入口点
 // 参数：hInst - 当前实例句柄；hPrevInst - 前一个实例（已废弃，总是NULL）
@@ -56,6 +65,8 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nShow)
 {
     // 保存实例句柄到全局变量，供后续加载资源使用
     g_hInst = hInst;
+
+    InitBubbleWindowHook();
 
     // 启用高DPI感知（关键：解决弹窗文字模糊）
     // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 - 每个显示器独立DPI感知（Win10 1703+）
@@ -101,18 +112,18 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nShow)
     Shell_NotifyIcon(NIM_ADD, &g_nid);
 
     // ---------------------- 消息循环 ----------------------
-    MSG msg;  // 消息结构体，存储消息信息
-    // GetMessage - 从消息队列获取消息，返回0表示收到WM_QUIT
-    // 参数：消息结构体；窗口句柄(NULL接收所有窗口消息)；最小值；最大值
+    MSG msg;
     while (GetMessage(&msg, NULL, 0, 0))
     {
-        TranslateMessage(&msg);  // 将虚拟按键消息转换为字符消息
-        DispatchMessage(&msg);   // 将消息分发给对应的窗口过程
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
     }
 
-    // 程序退出前删除托盘图标
+    // 程序退出前，卸载钩子并清理窗口
+    UninitBubbleWindowHook(); // <--- 添加这一行
+
     Shell_NotifyIcon(NIM_DELETE, &g_nid);
-    return 0;  // 返回给系统
+    return 0;
 }
 
 // ---------------------- 显示托盘右键菜单 ----------------------

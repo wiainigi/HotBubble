@@ -9,6 +9,9 @@
       <Filter>AboutWindow</Filter>
     </ClCompile>
     <ClCompile Include="config.cpp" />
+    <ClCompile Include="BubbleWindow.cpp">
+      <Filter>BubbleWindow</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h" />
@@ -19,6 +22,9 @@
       <Filter>AboutWindow</Filter>
     </ClInclude>
     <ClInclude Include="config.h" />
+    <ClInclude Include="BubbleWindow.h">
+      <Filter>BubbleWindow</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="resource.rc" />
@@ -33,6 +39,9 @@
     </Filter>
     <Filter Include="AboutWindow">
       <UniqueIdentifier>{05b17223-bb5b-44d5-814c-df448b14bde9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="BubbleWindow">
+      <UniqueIdentifier>{2c8144a1-d00d-41cf-9333-14e1e4ea9bb4}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

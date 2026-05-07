@@ -36,14 +36,6 @@ typedef struct {
     int      bgAlpha;
 } SettingConfig;
 
-extern int      g_nTitleSize;
-extern int      g_nLabelSize;
-extern int      g_nBgAlpha;
-extern COLORREF g_crTitle;
-extern COLORREF g_crLabel;
-extern COLORREF g_crBg;
-extern COLORREF g_crMark;
-
 static HWND   g_hSetting = NULL;
 static SettingConfig g_tempConfig;
 static HFONT  g_hSegoeUIFont = NULL;
