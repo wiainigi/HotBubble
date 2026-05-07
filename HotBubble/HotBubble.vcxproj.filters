@@ -1,0 +1,38 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="SettingWindow.cpp">
+      <Filter>SettingWindow</Filter>
+    </ClCompile>
+    <ClCompile Include="AboutWindow.cpp">
+      <Filter>AboutWindow</Filter>
+    </ClCompile>
+    <ClCompile Include="config.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="resource.h" />
+    <ClInclude Include="SettingWindow.h">
+      <Filter>SettingWindow</Filter>
+    </ClInclude>
+    <ClInclude Include="AboutWindow.h">
+      <Filter>AboutWindow</Filter>
+    </ClInclude>
+    <ClInclude Include="config.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="resource.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="..\app.ico" />
+    <Image Include="..\tray.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="SettingWindow">
+      <UniqueIdentifier>{9b3ca23f-b03f-496e-b6a5-65e19a3269e4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="AboutWindow">
+      <UniqueIdentifier>{05b17223-bb5b-44d5-814c-df448b14bde9}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
