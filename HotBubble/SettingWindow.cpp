@@ -217,7 +217,8 @@ LRESULT CALLBACK SettingWndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp)
             HBRUSH hBrush = CreateSolidBrush(g_tempConfig.crBg);
             FillRect(hdcMem, &rcMem, hBrush);
             DeleteObject(hBrush);
-            BYTE alpha = (BYTE)(255 - g_tempConfig.bgAlpha);
+            // 直接使用 bgAlpha 作为源半透明度，与气泡窗口一致
+            BYTE alpha = (BYTE)g_tempConfig.bgAlpha;
             BLENDFUNCTION blend = { AC_SRC_OVER, 0, alpha, 0 };
             AlphaBlend(hdc, 0, 0, w, h, hdcMem, 0, 0, w, h, blend);
             SelectObject(hdcMem, hOld);

@@ -66,7 +66,7 @@ static LRESULT CALLBACK AboutWndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp)
 
         // 底部关闭按钮
         CreateWindowW(L"BUTTON", L"关闭", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-            160, 280, 80, 30, hWnd, (HMENU)IDC_BTN_CLOSE, NULL, NULL);
+            160, 290, 80, 30, hWnd, (HMENU)IDC_BTN_CLOSE, NULL, NULL);
 
         // 为所有子控件设置默认字体
         EnumChildWindows(hWnd, [](HWND hChild, LPARAM lParam) -> BOOL {
@@ -108,7 +108,7 @@ static LRESULT CALLBACK AboutWndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp)
             HBRUSH hBrush = CreateSolidBrush(g_crBg);
             FillRect(hdcMem, &rcMem, hBrush);
             DeleteObject(hBrush);
-            BYTE alpha = (BYTE)(255 - g_nBgAlpha);
+            BYTE alpha = (BYTE)(g_nBgAlpha);
             BLENDFUNCTION blend = { AC_SRC_OVER, 0, alpha, 0 };
             AlphaBlend(hdc, 0, 0, w, h, hdcMem, 0, 0, w, h, blend);
             SelectObject(hdcMem, hOld);
