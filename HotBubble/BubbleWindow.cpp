@@ -62,7 +62,7 @@ static void DrawHotkeysLayout(HDC hdc, const RECT& rect, int startY,
     int& consumedHeight);
 static int  DrawTitle(HDC hdc, const RECT& clientRect, const std::wstring& titleText,
     int topOffset);
-static void OnPaint(HWND hWnd);  // 添加前向声明
+static void OnPaint(HWND hWnd);
 
 // ==================== 辅助函数：获取当前exe所在目录 ====================
 static std::wstring GetExeDirectory()
@@ -277,6 +277,73 @@ static bool LoadProcessConfiguration(const std::wstring& processExeName)
     return true;
 }
 
+// ==================== 修饰键检测（用于颜色标记） ====================
+struct ModifierMapping {
+    const wchar_t* name;
+    DWORD vkCodes[3];
+    int count;
+};
+
+static const ModifierMapping g_modifierMappings[] = {
+    { L"Ctrl",    { VK_CONTROL, VK_LCONTROL, VK_RCONTROL }, 3 },
+    { L"Control", { VK_CONTROL, VK_LCONTROL, VK_RCONTROL }, 3 },
+    { L"Alt",     { VK_MENU,    VK_LMENU,    VK_RMENU },    3 },
+    { L"Shift",   { VK_SHIFT,   VK_LSHIFT,   VK_RSHIFT },   3 },
+    { L"Win",     { VK_LWIN,    VK_RWIN,     0 },           2 },
+    { L"Windows", { VK_LWIN,    VK_RWIN,     0 },           2 }
+};
+
+// 检查某个修饰键名称是否处于按下状态
+static bool IsModifierPressed(const std::wstring& modifierName)
+{
+    for (const auto& mapping : g_modifierMappings)
+    {
+        if (_wcsicmp(modifierName.c_str(), mapping.name) == 0)
+        {
+            for (int i = 0; i < mapping.count; ++i)
+            {
+                DWORD vk = mapping.vkCodes[i];
+                if (vk != 0 && g_modKeyStates[vk] == 1)
+                    return true;
+            }
+            break;
+        }
+    }
+    return false;
+}
+
+// 解析热键字符串，返回片段列表 (文本, 是否需要标记颜色)
+static std::vector<std::pair<std::wstring, bool>> ParseHotkeyString(const std::wstring& str)
+{
+    std::vector<std::pair<std::wstring, bool>> fragments;
+    std::wstring currentToken;
+    bool inAlnum = false;
+
+    for (size_t i = 0; i <= str.length(); ++i)
+    {
+        wchar_t ch = (i < str.length()) ? str[i] : L'\0';
+        bool isAlnum = (ch != L'\0') && iswalnum(ch);
+
+        if (isAlnum != inAlnum || ch == L'\0')
+        {
+            if (!currentToken.empty())
+            {
+                bool isMod = false;
+                if (inAlnum) // 仅对字母数字token判断是否为修饰键
+                {
+                    isMod = IsModifierPressed(currentToken);
+                }
+                fragments.push_back({ currentToken, isMod });
+                currentToken.clear();
+            }
+            inAlnum = isAlnum;
+        }
+        if (ch != L'\0')
+            currentToken.push_back(ch);
+    }
+    return fragments;
+}
+
 // ==================== 窗口管理 ====================
 static BOOL RegisterBubbleClass()
 {
@@ -413,6 +480,40 @@ static int DrawTitle(HDC hdc, const RECT& clientRect, const std::wstring& titleT
     return height;
 }
 
+// 绘制单个热键条目（支持修饰键高亮）
+static void DrawHotkeyItem(HDC hdc, int x, int y, const std::wstring& hotkeyStr,
+    COLORREF normalColor, COLORREF markColor)
+{
+    // 解析字符串
+    auto fragments = ParseHotkeyString(hotkeyStr);
+    if (fragments.empty())
+        return;
+
+    // 获取字体高度（用于垂直居中，假设所有片段高度相同）
+    SIZE textSize;
+    GetTextExtentPoint32W(hdc, L"测", 1, &textSize);
+    int textHeight = textSize.cy;
+
+    int currentX = x;
+    for (const auto& frag : fragments)
+    {
+        const std::wstring& text = frag.first;
+        bool needMark = frag.second;
+
+        GetTextExtentPoint32W(hdc, text.c_str(), (int)text.length(), &textSize);
+        if (needMark)
+            SetTextColor(hdc, markColor);
+        else
+            SetTextColor(hdc, normalColor);
+
+        // 绘制文本（左对齐，垂直居中）
+        RECT fragRect = { currentX, y, currentX + textSize.cx, y + textHeight };
+        DrawTextW(hdc, text.c_str(), -1, &fragRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+        currentX += textSize.cx;
+    }
+}
+
 // 绘制热键列表，consumedHeight 为实际占用高度
 static void DrawHotkeysLayout(HDC hdc, const RECT& rect, int startY,
     const std::vector<std::pair<std::wstring, std::wstring>>& hotkeyList,
@@ -434,7 +535,6 @@ static void DrawHotkeysLayout(HDC hdc, const RECT& rect, int startY,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
     HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
-    SetTextColor(hdc, g_crLabel);
     SetBkMode(hdc, TRANSPARENT);
 
     SIZE textSize;
@@ -457,6 +557,7 @@ static void DrawHotkeysLayout(HDC hdc, const RECT& rect, int startY,
             x = margin;
         }
 
+        // 绘制圆角矩形背景
         RECT itemRect = { x, y, x + itemWidth, y + lineHeight };
         HPEN pen = CreatePen(PS_SOLID, 1, g_crLabel);
         HPEN oldPen = (HPEN)SelectObject(hdc, pen);
@@ -466,8 +567,26 @@ static void DrawHotkeysLayout(HDC hdc, const RECT& rect, int startY,
         SelectObject(hdc, oldBr);
         DeleteObject(pen);
 
-        RECT textRect = { x + padH, y + padV, x + itemWidth - padH, y + lineHeight - padV };
-        DrawTextW(hdc, display.c_str(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        // 绘制文本（分段，支持修饰键高亮）
+        // 文本绘制区域相对于矩形左边距 padH，垂直居中
+        int textX = x + padH;
+        int textY = y + padV;
+        // 先绘制描述部分（普通颜色），按键部分单独分段绘制
+        // 整体字符串格式: "按键  描述"，我们需要分别绘制按键部分和描述部分
+        // 但为了标记按键中的修饰键，我们分段绘制的是按键部分（item.first），描述部分整体用普通颜色
+        std::wstring hotkeyPart = item.first;
+        std::wstring descPart = L"  " + item.second;
+
+        // 绘制按键部分（支持高亮）
+        DrawHotkeyItem(hdc, textX, textY, hotkeyPart, g_crLabel, g_crMark);
+        // 计算按键部分宽度，然后绘制描述部分
+        SIZE hotkeySize;
+        GetTextExtentPoint32W(hdc, hotkeyPart.c_str(), (int)hotkeyPart.length(), &hotkeySize);
+        SIZE descSize;
+        GetTextExtentPoint32W(hdc, descPart.c_str(), (int)descPart.length(), &descSize);
+        SetTextColor(hdc, g_crLabel);
+        RECT descRect = { textX + hotkeySize.cx, textY, textX + hotkeySize.cx + descSize.cx, textY + (textSize.cy) };
+        DrawTextW(hdc, descPart.c_str(), -1, &descRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
         x += itemWidth + horzSpacing;
     }
@@ -475,10 +594,12 @@ static void DrawHotkeysLayout(HDC hdc, const RECT& rect, int startY,
     SelectObject(hdc, oldFont);
     DeleteObject(hFont);
 
-    consumedHeight = (y + lineHeight) - startY;
+    // 计算总高度
+    int lastY = y + lineHeight;
+    consumedHeight = lastY - startY;
 }
 
-// ==================== 窗口绘制（WM_PAINT） - 唯一的 OnPaint ====================
+// ==================== 窗口绘制（WM_PAINT） ====================
 static void OnPaint(HWND hWnd)
 {
     PAINTSTRUCT ps;
@@ -567,13 +688,35 @@ static void ShowBubbleWindow()
     SystemParametersInfo(SPI_GETWORKAREA, 0, &workArea, 0);
     int screenWidth = workArea.right - workArea.left;
     int screenBottom = workArea.bottom;
+    int screenTop = workArea.top;
 
     int windowHeight = CalculateWindowHeight(screenWidth);
     int maxHeight = workArea.bottom - workArea.top - 20;
     if (windowHeight > maxHeight) windowHeight = maxHeight;
 
     int windowX = workArea.left;
-    int windowY = screenBottom - windowHeight;
+    int windowY;
+
+    // 根据鼠标位置决定窗口显示在屏幕上半部还是下半部
+    POINT cursorPos;
+    GetCursorPos(&cursorPos);
+    int screenFullHeight = GetSystemMetrics(SM_CYSCREEN);
+    bool mouseInUpperHalf = (cursorPos.y < screenFullHeight / 2);
+
+    if (mouseInUpperHalf)
+    {
+        // 鼠标在上半屏 -> 窗口显示在下半屏（底部）
+        windowY = screenBottom - windowHeight;
+    }
+    else
+    {
+        // 鼠标在下半屏 -> 窗口显示在上半屏（顶部）
+        windowY = screenTop;
+    }
+
+    // 确保窗口不超出工作区范围
+    if (windowY < screenTop) windowY = screenTop;
+    if (windowY + windowHeight > screenBottom) windowY = screenBottom - windowHeight;
 
     g_hBubbleWnd = CreateWindowExW(
         WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TRANSPARENT,
