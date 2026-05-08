@@ -571,9 +571,8 @@ static void DrawHotkeysLayout(HDC hdc, const RECT& rect, int startY,
         // 文本绘制区域相对于矩形左边距 padH，垂直居中
         int textX = x + padH;
         int textY = y + padV;
-        // 先绘制描述部分（普通颜色），按键部分单独分段绘制
         // 整体字符串格式: "按键  描述"，我们需要分别绘制按键部分和描述部分
-        // 但为了标记按键中的修饰键，我们分段绘制的是按键部分（item.first），描述部分整体用普通颜色
+        // 为了标记按键中的修饰键，我们分段绘制的是按键部分（item.first），描述部分整体用普通颜色
         std::wstring hotkeyPart = item.first;
         std::wstring descPart = L"  " + item.second;
 
@@ -758,14 +757,16 @@ static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wp, LPARAM lp)
         {
             BOOL isKeyDown = (wp == WM_KEYDOWN || wp == WM_SYSKEYDOWN);
             BOOL isKeyUp = (wp == WM_KEYUP || wp == WM_SYSKEYUP);
+            bool stateChanged = false;
 
             if (isKeyDown)
             {
                 if (g_modKeyStates[vk] == 0)
                 {
                     g_modKeyStates[vk] = 1;
+                    stateChanged = true;
                     if (g_nModifierCount == 0)
-                        ShowBubbleWindow();
+                        ShowBubbleWindow();   // 第一个修饰键按下，创建窗口
                     g_nModifierCount++;
                 }
             }
@@ -774,13 +775,20 @@ static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wp, LPARAM lp)
                 if (g_modKeyStates[vk] == 1)
                 {
                     g_modKeyStates[vk] = 0;
+                    stateChanged = true;
                     if (g_nModifierCount > 0)
                     {
                         g_nModifierCount--;
                         if (g_nModifierCount == 0)
-                            DestroyBubbleWindow();
+                            DestroyBubbleWindow(); // 最后一个修饰键抬起，销毁窗口
                     }
                 }
+            }
+
+            // 如果状态发生了变化且窗口当前存在（未销毁），则立即刷新窗口以更新高亮
+            if (stateChanged && g_hBubbleWnd != NULL)
+            {
+                InvalidateRect(g_hBubbleWnd, NULL, TRUE);
             }
         }
     }
