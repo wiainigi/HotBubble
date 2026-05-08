@@ -598,7 +598,7 @@ static void DrawHotkeysLayout(HDC hdc, const RECT& rect, int startY,
     consumedHeight = lastY - startY;
 }
 
-// ==================== 窗口绘制（WM_PAINT） ====================
+// ==================== 窗口绘制（WM_PAINT） - 双缓冲防止闪烁 ====================
 static void OnPaint(HWND hWnd)
 {
     PAINTSTRUCT ps;
@@ -606,32 +606,45 @@ static void OnPaint(HWND hWnd)
     RECT clientRect;
     GetClientRect(hWnd, &clientRect);
 
-    // 直接绘制不透明背景（窗口整体的半透明由 SetLayeredWindowAttributes 的全局 alpha 控制）
+    // 创建内存 DC 和位图，用于双缓冲
+    HDC memDC = CreateCompatibleDC(hdc);
+    HBITMAP memBitmap = CreateCompatibleBitmap(hdc, clientRect.right - clientRect.left, clientRect.bottom - clientRect.top);
+    HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, memBitmap);
+
+    // 在内存 DC 中绘制背景（不透明背景，窗口整体透明度由 SetLayeredWindowAttributes 控制）
     HBRUSH bgBrush = CreateSolidBrush(g_crBg);
-    FillRect(hdc, &clientRect, bgBrush);
+    FillRect(memDC, &clientRect, bgBrush);
     DeleteObject(bgBrush);
 
+    // 绘制内容到内存 DC
     const int margin = 15;
     const int titleBottomSpacing = 15;
     const int blockSpacing = 25;
 
-    // 第一块：Windows 标题 + 热键
-    int titleH1 = DrawTitle(hdc, clientRect, g_titleText, margin);
+    int titleH1 = DrawTitle(memDC, clientRect, g_titleText, margin);
     int hotkeyConsumed1 = 0;
-    DrawHotkeysLayout(hdc, clientRect, margin + titleH1 + titleBottomSpacing,
+    DrawHotkeysLayout(memDC, clientRect, margin + titleH1 + titleBottomSpacing,
         g_hotkeyList, hotkeyConsumed1);
 
-    // 第二块：进程专属（如果有标题）
     if (!g_processTitleText.empty())
     {
         int startY2 = margin + titleH1 + titleBottomSpacing + hotkeyConsumed1 + blockSpacing;
-        int titleH2 = DrawTitle(hdc, clientRect, g_processTitleText, startY2);
+        int titleH2 = DrawTitle(memDC, clientRect, g_processTitleText, startY2);
         if (!g_processHotkeyList.empty())
         {
-            DrawHotkeysLayout(hdc, clientRect, startY2 + titleH2 + titleBottomSpacing,
+            DrawHotkeysLayout(memDC, clientRect, startY2 + titleH2 + titleBottomSpacing,
                 g_processHotkeyList, hotkeyConsumed1);
         }
     }
+
+    // 将内存 DC 的内容一次性复制到屏幕 DC
+    BitBlt(hdc, 0, 0, clientRect.right - clientRect.left, clientRect.bottom - clientRect.top,
+        memDC, 0, 0, SRCCOPY);
+
+    // 清理资源
+    SelectObject(memDC, oldBitmap);
+    DeleteObject(memBitmap);
+    DeleteDC(memDC);
 
     EndPaint(hWnd, &ps);
 }
@@ -710,7 +723,7 @@ static void ShowBubbleWindow()
 
     if (g_hBubbleWnd)
     {
-        // 使用全局 alpha 实现半透明背景（同时文字也会半透明，效果与之前一致）
+        // 使用全局 alpha 实现半透明背景
         SetLayeredWindowAttributes(g_hBubbleWnd, 0, (BYTE)g_nBgAlpha, LWA_ALPHA);
         ShowWindow(g_hBubbleWnd, SW_SHOWNOACTIVATE);
         UpdateWindow(g_hBubbleWnd);
@@ -752,7 +765,7 @@ static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wp, LPARAM lp)
                     g_modKeyStates[vk] = 1;
                     stateChanged = true;
                     if (g_nModifierCount == 0)
-                        ShowBubbleWindow();   // 第一个修饰键按下，创建窗口
+                        ShowBubbleWindow();
                     g_nModifierCount++;
                 }
             }
@@ -766,12 +779,11 @@ static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wp, LPARAM lp)
                     {
                         g_nModifierCount--;
                         if (g_nModifierCount == 0)
-                            DestroyBubbleWindow(); // 最后一个修饰键抬起，销毁窗口
+                            DestroyBubbleWindow();
                     }
                 }
             }
 
-            // 如果状态发生了变化且窗口当前存在（未销毁），则立即刷新窗口以更新高亮
             if (stateChanged && g_hBubbleWnd != NULL)
             {
                 InvalidateRect(g_hBubbleWnd, NULL, FALSE);
