@@ -42,18 +42,27 @@ static const wchar_t CLASS_NAME[] = L"BubbleWindowClass";
 //  Win + E = 打开文件资源管理器
 //  ...
 
-// 配置文件解析结果
-static std::wstring       g_titleText;                       // 标题文字（来自[Info]）
-static std::vector<std::pair<std::wstring, std::wstring>> g_hotkeyList; // 热键条目 <组合键文本, 功能描述>
-static bool               g_configLoaded = false;            // 是否已加载配置
+// ------------------- 全局配置文件数据 -------------------
+static std::wstring       g_titleText;                       // Windows 标题文字
+static std::vector<std::pair<std::wstring, std::wstring>> g_hotkeyList; // Windows 热键条目
+static bool               g_configLoaded = false;            // Windows 配置是否已加载
+
+// 前台进程专属热键
+static std::wstring       g_processTitleText;
+static std::vector<std::pair<std::wstring, std::wstring>> g_processHotkeyList;
 
 // 前向声明
 static LRESULT CALLBACK BubbleWndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp);
 static void ShowBubbleWindow();
 static void DestroyBubbleWindow();
 static bool LoadConfiguration();
-static int  CalculateWindowHeight(int screenWidth, int& outTitleHeight, int& outHotkeyAreaHeight);
-static void DrawHotkeysLayout(HDC hdc, const RECT& rect, int startY, int titleHeight);
+static bool LoadProcessConfiguration(const std::wstring& processExeName);
+static int  CalculateWindowHeight(int screenWidth);
+static void DrawHotkeysLayout(HDC hdc, const RECT& rect, int startY,
+    const std::vector<std::pair<std::wstring, std::wstring>>& hotkeyList,
+    int& consumedHeight);
+static int  DrawTitle(HDC hdc, const RECT& clientRect, const std::wstring& titleText,
+    int topOffset);
 
 // ==================== 辅助函数：获取当前exe所在目录 ====================
 static std::wstring GetExeDirectory()
@@ -65,16 +74,49 @@ static std::wstring GetExeDirectory()
     return std::wstring(path);
 }
 
+// ==================== 辅助函数：获取前台窗口进程名（不含扩展名） ====================
+static std::wstring GetForegroundProcessName()
+{
+    HWND hFgWnd = GetForegroundWindow();
+    if (!hFgWnd) return L"";
+
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hFgWnd, &pid);
+    if (pid == 0) return L"";
+
+    HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+    if (!hProcess) return L"";
+
+    wchar_t exePath[MAX_PATH] = { 0 };
+    DWORD size = MAX_PATH;
+    if (QueryFullProcessImageNameW(hProcess, 0, exePath, &size))
+    {
+        std::wstring path(exePath);
+        size_t pos = path.rfind(L'\\');
+        if (pos != std::wstring::npos)
+        {
+            std::wstring name = path.substr(pos + 1);
+            size_t dotPos = name.rfind(L'.');
+            if (dotPos != std::wstring::npos)
+                name = name.substr(0, dotPos);
+            CloseHandle(hProcess);
+            return name;
+        }
+    }
+
+    CloseHandle(hProcess);
+    return L"";
+}
+
 // ==================== 读取并解析 windows.ini ====================
 static bool LoadConfiguration()
 {
-    if (g_configLoaded) return true;  // 只加载一次
+    if (g_configLoaded) return true;
 
     std::wstring iniPath = GetExeDirectory() + L"keyboards\\windows.ini";
     std::ifstream file(iniPath);
     if (!file.is_open())
     {
-        // 文件不存在时显示默认内容
         g_titleText = L"Windows 快捷键指南";
         g_hotkeyList.clear();
         g_configLoaded = true;
@@ -109,21 +151,18 @@ static bool LoadConfiguration()
 
     while (std::getline(file, line))
     {
-        // 跳过空行和注释（以;或#开头）
         if (line.empty() || line[0] == ';' || line[0] == '#')
             continue;
 
         trim(line);
         if (line.empty()) continue;
 
-        // 节匹配
         if (line.front() == '[' && line.back() == ']')
         {
             currentSection = line;
             continue;
         }
 
-        // 键值对解析
         size_t eqPos = line.find('=');
         if (eqPos == std::string::npos) continue;
 
@@ -135,7 +174,6 @@ static bool LoadConfiguration()
 
         if (currentSection == sectionInfo)
         {
-            // [Info] 节：优先取 Name，其次 Description
             if (key == "Name" && g_titleText.empty())
                 g_titleText = utf8ToWide(value);
             else if (key == "Description" && g_titleText.empty())
@@ -143,7 +181,6 @@ static bool LoadConfiguration()
         }
         else if (currentSection == sectionKeys)
         {
-            // [Keys] 节：存储热键
             std::wstring wKey = utf8ToWide(key);
             std::wstring wValue = utf8ToWide(value);
             if (!wKey.empty())
@@ -155,6 +192,88 @@ static bool LoadConfiguration()
         g_titleText = L"Windows 快捷键指南";
 
     g_configLoaded = true;
+    return true;
+}
+
+// ==================== 读取并解析进程专属 .ini ====================
+static bool LoadProcessConfiguration(const std::wstring& processExeName)
+{
+    g_processTitleText.clear();
+    g_processHotkeyList.clear();
+
+    if (processExeName.empty())
+        return false;
+
+    std::wstring iniPath = GetExeDirectory() + L"keyboards\\" + processExeName + L".ini";
+    std::ifstream file(iniPath);
+    if (!file.is_open())
+        return false;
+
+    std::string line;
+    std::string currentSection;
+    const std::string sectionInfo = "[Info]";
+    const std::string sectionKeys = "[Keys]";
+
+    auto trim = [](std::string& s) {
+        s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
+            return !std::isspace(ch);
+            }));
+        s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) {
+            return !std::isspace(ch);
+            }).base(), s.end());
+        };
+
+    auto utf8ToWide = [](const std::string& utf8) -> std::wstring {
+        if (utf8.empty()) return L"";
+        int len = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, NULL, 0);
+        if (len <= 0) return L"";
+        std::wstring wstr(len - 1, L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, &wstr[0], len);
+        return wstr;
+        };
+
+    while (std::getline(file, line))
+    {
+        if (line.empty() || line[0] == ';' || line[0] == '#')
+            continue;
+
+        trim(line);
+        if (line.empty()) continue;
+
+        if (line.front() == '[' && line.back() == ']')
+        {
+            currentSection = line;
+            continue;
+        }
+
+        size_t eqPos = line.find('=');
+        if (eqPos == std::string::npos) continue;
+
+        std::string key = line.substr(0, eqPos);
+        std::string value = line.substr(eqPos + 1);
+        trim(key);
+        trim(value);
+        if (key.empty()) continue;
+
+        if (currentSection == sectionInfo)
+        {
+            if (key == "Name" && g_processTitleText.empty())
+                g_processTitleText = utf8ToWide(value);
+            else if (key == "Description" && g_processTitleText.empty())
+                g_processTitleText = utf8ToWide(value);
+        }
+        else if (currentSection == sectionKeys)
+        {
+            std::wstring wKey = utf8ToWide(key);
+            std::wstring wValue = utf8ToWide(value);
+            if (!wKey.empty())
+                g_processHotkeyList.push_back({ wKey, wValue });
+        }
+    }
+
+    if (g_processTitleText.empty())
+        g_processTitleText = processExeName;
+
     return true;
 }
 
@@ -171,17 +290,14 @@ static BOOL RegisterBubbleClass()
     return RegisterClass(&g_wc) != 0;
 }
 
-// 计算窗口所需高度（基于当前屏幕宽度和内容）
-static int CalculateWindowHeight(int screenWidth, int& outTitleHeight, int& outHotkeyAreaHeight)
+// 计算窗口总高度（基于当前屏幕宽度）
+static int CalculateWindowHeight(int screenWidth)
 {
-    const int margin = 15;          // 左右边距
-    const int titleBottomMargin = 20; // 标题与热键区域间距
-    const int hotkeyHorzSpacing = 12; // 热键项水平间距
-    const int hotkeyVertSpacing = 8;  // 热键项垂直间距
-    const int hotkeyPaddingH = 8;     // 热键项内边距（左右）
-    const int hotkeyPaddingV = 4;     // 热键项内边距（上下）
+    const int margin = 15;              // 左右边距
+    const int titleBottomSpacing = 15;  // 标题与热键间距（同原始代码）
+    const int blockSpacing = 25;        // Windows热键区与进程标题的额外间距
+    const int bottomPadding = 15;       // 窗口底部留白
 
-    // 创建临时DC和字体用于测量
     HDC hdc = GetDC(NULL);
     HFONT hTitleFont = CreateFontW(-g_nTitleSize, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -191,148 +307,282 @@ static int CalculateWindowHeight(int screenWidth, int& outTitleHeight, int& outH
         DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
     HFONT hOldFont = (HFONT)SelectObject(hdc, hTitleFont);
 
-    // 测量标题高度
+    // 测量标题1高度（纯文本高度）
     RECT titleRect = { 0, 0, screenWidth - 2 * margin, 0 };
     DrawTextW(hdc, g_titleText.c_str(), -1, &titleRect, DT_CALCRECT | DT_LEFT | DT_TOP | DT_WORDBREAK);
-    outTitleHeight = titleRect.bottom + titleBottomMargin;
+    int titleHeight1 = titleRect.bottom - titleRect.top;
 
-    // 测量热键区域高度（流式布局）
+    // 测量热键区域1高度
     SelectObject(hdc, hHotkeyFont);
-    SIZE textSize;
-    GetTextExtentPoint32W(hdc, L"测", 1, &textSize);
-    int lineHeight = textSize.cy + hotkeyPaddingV * 2;
-
-    int x = margin;
-    int y = 0;
-    int maxWidth = screenWidth - 2 * margin;
-    int totalHeight = 0;
-
-    for (const auto& item : g_hotkeyList)
-    {
-        std::wstring displayText = item.first + L"  " + item.second;
-        GetTextExtentPoint32W(hdc, displayText.c_str(), (int)displayText.length(), &textSize);
-        int itemWidth = textSize.cx + hotkeyPaddingH * 2;
-
-        if (x + itemWidth > maxWidth && x > margin)
-        {
-            // 换行
-            totalHeight += lineHeight + hotkeyVertSpacing;
-            x = margin;
-            y = totalHeight;
-        }
-        x += itemWidth + hotkeyHorzSpacing;
-    }
+    int hotkeyHeight1 = 0;
     if (!g_hotkeyList.empty())
-        totalHeight += lineHeight + hotkeyVertSpacing; // 最后一行高度
+    {
+        int x = margin, y = 0, maxWidth = screenWidth - 2 * margin;
+        SIZE textSize;
+        GetTextExtentPoint32W(hdc, L"测", 1, &textSize);
+        int lineHeight = textSize.cy + 8;  // 内边距
 
-    outHotkeyAreaHeight = totalHeight + margin;
+        for (const auto& item : g_hotkeyList)
+        {
+            std::wstring display = item.first + L"  " + item.second;
+            GetTextExtentPoint32W(hdc, display.c_str(), (int)display.length(), &textSize);
+            int itemW = textSize.cx + 16;
+            if (x + itemW > maxWidth && x > margin)
+            {
+                y += lineHeight + 8;
+                x = margin;
+            }
+            x += itemW + 12;
+        }
+        hotkeyHeight1 = y + lineHeight; // 最后一行底部坐标
+    }
 
-    // 清理
+    // 进程块高度
+    int titleHeight2 = 0, hotkeyHeight2 = 0;
+    if (!g_processHotkeyList.empty())
+    {
+        SelectObject(hdc, hTitleFont);
+        RECT titleRect2 = { 0, 0, screenWidth - 2 * margin, 0 };
+        DrawTextW(hdc, g_processTitleText.c_str(), -1, &titleRect2, DT_CALCRECT | DT_LEFT | DT_TOP | DT_WORDBREAK);
+        titleHeight2 = titleRect2.bottom - titleRect2.top;
+
+        SelectObject(hdc, hHotkeyFont);
+        int x = margin, y = 0, maxWidth = screenWidth - 2 * margin;
+        SIZE textSize;
+        // 添加 lineHeight 定义
+        GetTextExtentPoint32W(hdc, L"测", 1, &textSize);
+        int lineHeight = textSize.cy + 8;  // 内边距
+
+        for (const auto& item : g_processHotkeyList)
+        {
+            std::wstring display = item.first + L"  " + item.second;
+            GetTextExtentPoint32W(hdc, display.c_str(), (int)display.length(), &textSize);
+            int itemW = textSize.cx + 16;
+            if (x + itemW > maxWidth && x > margin)
+            {
+                y += lineHeight + 8;
+                x = margin;
+            }
+            x += itemW + 12;
+        }
+        hotkeyHeight2 = y + lineHeight;
+    }
+
+    // 清理字体
     SelectObject(hdc, hOldFont);
     DeleteObject(hTitleFont);
     DeleteObject(hHotkeyFont);
     ReleaseDC(NULL, hdc);
 
-    return outTitleHeight + outHotkeyAreaHeight;
+    // 总高度 = 上边距 + 标题1 + 间距 + 热键1 + (块间距 + 标题2 + 间距 + 热键2) + 底部留白
+    int total = margin + titleHeight1 + titleBottomSpacing + hotkeyHeight1;
+    if (!g_processHotkeyList.empty())
+        total += blockSpacing + titleHeight2 + titleBottomSpacing + hotkeyHeight2;
+    total += bottomPadding;
+
+    return total;
 }
 
-// 绘制热键（流式布局）
-static void DrawHotkeysLayout(HDC hdc, const RECT& rect, int startY, int titleHeight)
+// 绘制标题，返回标题占用的总高度（含底部间距，同原代码行为）
+static int DrawTitle(HDC hdc, const RECT& clientRect, const std::wstring& titleText, int topOffset)
 {
     const int margin = 15;
-    const int hotkeyHorzSpacing = 12;
-    const int hotkeyVertSpacing = 8;
-    const int hotkeyPaddingH = 8;
-    const int hotkeyPaddingV = 4;
+    RECT rect = { clientRect.left + margin, topOffset, clientRect.right - margin, clientRect.bottom };
 
-    HFONT hHotkeyFont = CreateFontW(-g_nLabelSize, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    HFONT hFont = CreateFontW(-g_nTitleSize, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-    HFONT hOldFont = (HFONT)SelectObject(hdc, hHotkeyFont);
+    HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
+    SetTextColor(hdc, g_crTitle);
+    SetBkMode(hdc, TRANSPARENT);
+
+    RECT calcRect = rect;
+    DrawTextW(hdc, titleText.c_str(), -1, &calcRect, DT_CALCRECT | DT_LEFT | DT_TOP | DT_WORDBREAK);
+    int height = calcRect.bottom - rect.top;
+
+    DrawTextW(hdc, titleText.c_str(), -1, &rect, DT_LEFT | DT_TOP | DT_WORDBREAK);
+
+    SelectObject(hdc, oldFont);
+    DeleteObject(hFont);
+
+    return height; // 返回纯文本高度，调用者自行添加间距
+}
+
+// 绘制热键列表，返回实际占用高度（从 startY 开始的总像素）
+static void DrawHotkeysLayout(HDC hdc, const RECT& rect, int startY,
+    const std::vector<std::pair<std::wstring, std::wstring>>& hotkeyList,
+    int& consumedHeight)
+{
+    const int margin = 15;
+    const int horzSpacing = 12;
+    const int vertSpacing = 8;
+    const int padH = 8;
+    const int padV = 4;
+
+    if (hotkeyList.empty())
+    {
+        consumedHeight = 0;
+        return;
+    }
+
+    HFONT hFont = CreateFontW(-g_nLabelSize, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+    HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
     SetTextColor(hdc, g_crLabel);
     SetBkMode(hdc, TRANSPARENT);
 
-    int x = margin;
-    int y = startY + titleHeight;
-    int maxWidth = rect.right - margin;
     SIZE textSize;
-    int lineHeight = 0;
+    GetTextExtentPoint32W(hdc, L"测", 1, &textSize);
+    int lineHeight = textSize.cy + padV * 2;
 
-    for (size_t i = 0; i < g_hotkeyList.size(); ++i)
+    int x = margin;
+    int y = startY;
+    int maxWidth = rect.right - margin;
+
+    for (const auto& item : hotkeyList)
     {
-        std::wstring displayText = g_hotkeyList[i].first + L"  " + g_hotkeyList[i].second;
-        GetTextExtentPoint32W(hdc, displayText.c_str(), (int)displayText.length(), &textSize);
-        if (lineHeight == 0) lineHeight = textSize.cy + hotkeyPaddingV * 2;
+        std::wstring display = item.first + L"  " + item.second;
+        GetTextExtentPoint32W(hdc, display.c_str(), (int)display.length(), &textSize);
+        int itemWidth = textSize.cx + padH * 2;
 
-        int itemWidth = textSize.cx + hotkeyPaddingH * 2;
-
-        // 换行判断
         if (x + itemWidth > maxWidth && x > margin)
         {
-            y += lineHeight + hotkeyVertSpacing;
+            y += lineHeight + vertSpacing;
             x = margin;
         }
 
-        // 绘制圆角矩形背景（可选，使用半透明背景色）
+        // 圆角边框
         RECT itemRect = { x, y, x + itemWidth, y + lineHeight };
-        HPEN hPen = CreatePen(PS_SOLID, 1, g_crLabel);
-        HPEN oldPen = (HPEN)SelectObject(hdc, hPen);
-        HBRUSH oldBrush = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
+        HPEN pen = CreatePen(PS_SOLID, 1, g_crLabel);
+        HPEN oldPen = (HPEN)SelectObject(hdc, pen);
+        HBRUSH oldBr = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
         RoundRect(hdc, itemRect.left, itemRect.top, itemRect.right, itemRect.bottom, 6, 6);
         SelectObject(hdc, oldPen);
-        SelectObject(hdc, oldBrush);
-        DeleteObject(hPen);
+        SelectObject(hdc, oldBr);
+        DeleteObject(pen);
 
-        // 绘制文字
-        RECT textRect = { x + hotkeyPaddingH, y + hotkeyPaddingV,
-                          x + itemWidth - hotkeyPaddingH, y + lineHeight - hotkeyPaddingV };
-        DrawTextW(hdc, displayText.c_str(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        // 文字
+        RECT textRect = { x + padH, y + padV, x + itemWidth - padH, y + lineHeight - padV };
+        DrawTextW(hdc, display.c_str(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
-        x += itemWidth + hotkeyHorzSpacing;
+        x += itemWidth + horzSpacing;
     }
 
-    SelectObject(hdc, hOldFont);
-    DeleteObject(hHotkeyFont);
+    SelectObject(hdc, oldFont);
+    DeleteObject(hFont);
+
+    // 返回占用的总高度（最后一行底部 - startY）
+    consumedHeight = (y + lineHeight) - startY;
 }
 
-// 显示气泡窗口
+// ==================== 窗口绘制（WM_PAINT） ====================
+static void OnPaint(HWND hWnd)
+{
+    PAINTSTRUCT ps;
+    HDC hdc = BeginPaint(hWnd, &ps);
+    RECT clientRect;
+    GetClientRect(hWnd, &clientRect);
+
+    // 半透明背景
+    {
+        int w = clientRect.right - clientRect.left;
+        int h = clientRect.bottom - clientRect.top;
+        HDC memDC = CreateCompatibleDC(hdc);
+        HBITMAP memBmp = CreateCompatibleBitmap(hdc, w, h);
+        HBITMAP oldBmp = (HBITMAP)SelectObject(memDC, memBmp);
+        RECT memRect = { 0, 0, w, h };
+        HBRUSH brush = CreateSolidBrush(g_crBg);
+        FillRect(memDC, &memRect, brush);
+        DeleteObject(brush);
+
+        BLENDFUNCTION blend = { AC_SRC_OVER, 0, (BYTE)g_nBgAlpha, 0 };
+        AlphaBlend(hdc, 0, 0, w, h, memDC, 0, 0, w, h, blend);
+
+        SelectObject(memDC, oldBmp);
+        DeleteObject(memBmp);
+        DeleteDC(memDC);
+    }
+
+    const int margin = 15;
+    const int titleBottomSpacing = 15;  // 标题与热键间距（与原代码一致）
+    const int blockSpacing = 25;        // 两个热键块之间的额外间距
+
+    // ---- 第一块：Windows 标题 + 热键 ----
+    int titleH1 = DrawTitle(hdc, clientRect, g_titleText, margin);
+    int hotkeyConsumed1 = 0;
+    DrawHotkeysLayout(hdc, clientRect, margin + titleH1 + titleBottomSpacing,
+        g_hotkeyList, hotkeyConsumed1);
+
+    // ---- 第二块：进程专属（如果存在） ----
+    if (!g_processHotkeyList.empty())
+    {
+        int startY2 = margin + titleH1 + titleBottomSpacing + hotkeyConsumed1 + blockSpacing;
+        int titleH2 = DrawTitle(hdc, clientRect, g_processTitleText, startY2);
+        DrawHotkeysLayout(hdc, clientRect, startY2 + titleH2 + titleBottomSpacing,
+            g_processHotkeyList, hotkeyConsumed1); // 不使用返回值
+    }
+
+    EndPaint(hWnd, &ps);
+}
+
+// ==================== 窗口过程 ====================
+static LRESULT CALLBACK BubbleWndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp)
+{
+    switch (msg)
+    {
+    case WM_PAINT:
+        OnPaint(hWnd);
+        return 0;
+    case WM_ERASEBKGND:
+        return TRUE;
+    case WM_DESTROY:
+        g_hBubbleWnd = NULL;
+        return 0;
+    }
+    return DefWindowProc(hWnd, msg, wp, lp);
+}
+
+// ==================== 显示/销毁窗口 ====================
 static void ShowBubbleWindow()
 {
     if (!RegisterBubbleClass()) return;
-    LoadConfiguration();  // 确保配置已加载
+    LoadConfiguration();
 
-    // 单例管理
+    // 加载当前前台进程专属配置
+    std::wstring procName = GetForegroundProcessName();
+    LoadProcessConfiguration(procName);  // 每次显示都刷新配置
+
+    // 销毁已有窗口（单例）
     if (g_hBubbleWnd)
         DestroyBubbleWindow();
 
-    // 获取工作区尺寸
+    // 工作区尺寸
     RECT workArea;
     SystemParametersInfo(SPI_GETWORKAREA, 0, &workArea, 0);
     int screenWidth = workArea.right - workArea.left;
     int screenBottom = workArea.bottom;
 
     // 计算窗口高度
-    int titleHeight = 0, hotkeyHeight = 0;
-    int windowHeight = CalculateWindowHeight(screenWidth, titleHeight, hotkeyHeight);
-    // 限制最大高度不超过工作区
+    int windowHeight = CalculateWindowHeight(screenWidth);
     int maxHeight = workArea.bottom - workArea.top - 20;
     if (windowHeight > maxHeight) windowHeight = maxHeight;
 
     int windowX = workArea.left;
     int windowY = screenBottom - windowHeight;
 
-    // 创建窗口：无边框、置顶、分层、鼠标穿透
     g_hBubbleWnd = CreateWindowExW(
         WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TRANSPARENT,
         CLASS_NAME, L"BubbleWindow", WS_POPUP,
         windowX, windowY, screenWidth, windowHeight,
         NULL, NULL, GetModuleHandle(NULL), NULL);
 
-    if (!g_hBubbleWnd) return;
-
-    SetLayeredWindowAttributes(g_hBubbleWnd, 0, 255, LWA_ALPHA);
-    ShowWindow(g_hBubbleWnd, SW_SHOWNOACTIVATE);
-    UpdateWindow(g_hBubbleWnd);
+    if (g_hBubbleWnd)
+    {
+        SetLayeredWindowAttributes(g_hBubbleWnd, 0, 255, LWA_ALPHA);
+        ShowWindow(g_hBubbleWnd, SW_SHOWNOACTIVATE);
+        UpdateWindow(g_hBubbleWnd);
+    }
 }
 
 static void DestroyBubbleWindow()
@@ -342,92 +592,6 @@ static void DestroyBubbleWindow()
         DestroyWindow(g_hBubbleWnd);
         g_hBubbleWnd = NULL;
     }
-}
-
-// ==================== 窗口绘制函数 ====================
-static void DrawBackground(HDC hdc, const RECT& rect)
-{
-    // 创建与目标 DC 兼容的内存 DC 和位图
-    int width = rect.right - rect.left;
-    int height = rect.bottom - rect.top;
-    HDC memDC = CreateCompatibleDC(hdc);
-    HBITMAP memBmp = CreateCompatibleBitmap(hdc, width, height);
-    HBITMAP oldBmp = (HBITMAP)SelectObject(memDC, memBmp);
-
-    // 先在内存 DC 中填充不透明的背景色
-    RECT memRect = { 0, 0, width, height };
-    HBRUSH brush = CreateSolidBrush(g_crBg);
-    FillRect(memDC, &memRect, brush);
-    DeleteObject(brush);
-
-    // 使用 AlphaBlend 将内存 DC 按 g_nBgAlpha 透明度混合到目标 DC
-    BLENDFUNCTION blend = { 0 };
-    blend.BlendOp = AC_SRC_OVER;
-    blend.BlendFlags = 0;
-    blend.SourceConstantAlpha = g_nBgAlpha;       // 背景颜色透明度
-    blend.AlphaFormat = 0;
-
-    AlphaBlend(hdc, rect.left, rect.top, width, height,
-        memDC, 0, 0, width, height, blend);
-
-    SelectObject(memDC, oldBmp);
-    DeleteObject(memBmp);
-    DeleteDC(memDC);
-}
-
-static void DrawTitle(HDC hdc, const RECT& clientRect, int& outTitleHeight)
-{
-    const int margin = 15;
-    RECT titleRect = clientRect;
-    titleRect.left += margin;
-    titleRect.top += margin;
-    titleRect.right -= margin;
-
-    HFONT hTitleFont = CreateFontW(-g_nTitleSize, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-    HFONT hOldFont = (HFONT)SelectObject(hdc, hTitleFont);
-    SetTextColor(hdc, g_crTitle);
-    SetBkMode(hdc, TRANSPARENT);
-
-    // 计算标题实际占用高度
-    RECT calcRect = titleRect;
-    DrawTextW(hdc, g_titleText.c_str(), -1, &calcRect, DT_CALCRECT | DT_LEFT | DT_TOP | DT_WORDBREAK);
-    outTitleHeight = calcRect.bottom - titleRect.top;
-
-    DrawTextW(hdc, g_titleText.c_str(), -1, &titleRect, DT_LEFT | DT_TOP | DT_WORDBREAK);
-    SelectObject(hdc, hOldFont);
-    DeleteObject(hTitleFont);
-}
-
-// ==================== 窗口过程 ====================
-static LRESULT CALLBACK BubbleWndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp)
-{
-    switch (msg)
-    {
-    case WM_PAINT:
-    {
-        PAINTSTRUCT ps;
-        HDC hdc = BeginPaint(hWnd, &ps);
-        RECT clientRect;
-        GetClientRect(hWnd, &clientRect);
-
-        DrawBackground(hdc, clientRect);
-
-        int titleHeight = 0;
-        DrawTitle(hdc, clientRect, titleHeight);
-        DrawHotkeysLayout(hdc, clientRect, clientRect.top, titleHeight + 15); // 15为标题下边距
-
-        EndPaint(hWnd, &ps);
-        return 0;
-    }
-    case WM_ERASEBKGND:
-        return TRUE;
-    case WM_DESTROY:
-        g_hBubbleWnd = NULL;
-        return 0;
-    }
-    return DefWindowProc(hWnd, msg, wp, lp);
 }
 
 // ==================== 低级键盘钩子 ====================
@@ -482,7 +646,7 @@ void InitBubbleWindowHook()
     g_hKeyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKeyboardProc, GetModuleHandle(NULL), 0);
     g_nModifierCount = 0;
     memset(g_modKeyStates, 0, sizeof(g_modKeyStates));
-    LoadConfiguration(); // 预先加载配置
+    LoadConfiguration();
 }
 
 void UninitBubbleWindowHook()
