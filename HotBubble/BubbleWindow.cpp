@@ -16,6 +16,27 @@ static int         g_modKeyStates[256] = { 0 }; // 修饰键按下状态（0=未
 static WNDCLASS    g_wc = { 0 };             // 窗口类（已注册标志）
 static const wchar_t CLASS_NAME[] = L"BubbleWindowClass";
 
+// 此段内容是全局申明的变量，重新生成代码时保留此段代码注释
+//  extern int      g_nTitleSize;   标题文字大小
+//  extern int      g_nLabelSize;   标签文字大小
+//  extern int      g_nBgAlpha;     窗口背景颜色透明度
+//  extern COLORREF g_crTitle;      标题文字颜色
+//  extern COLORREF g_crLabel;      标签文字颜色
+//  extern COLORREF g_crBg;         窗口背景颜色
+//  extern COLORREF g_crMark;       标记文字颜色
+
+// 此段内容是keyboards/windows.ini配置文件内容格式（文件夹在程序根目录），重新生成代码时保留此段代码注释
+//  [Info]                          配置文件信息节点
+//  Name = Windows System           配置文件对应的进程名称
+//  Description = Windows 系统       进程说明
+//  
+//  [Keys]                          热键信息节点
+//  Win = 打开 / 关闭开始菜单          热键和热键作用
+//  Win + D = 显示桌面
+//  Win + E = 打开文件资源管理器
+//  ...
+
+
 // 当前激活窗口的进程名（在显示窗口时更新，已转为小写）
 static wchar_t     g_szActiveProcessName[MAX_PATH] = L"";
 
