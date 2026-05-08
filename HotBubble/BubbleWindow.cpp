@@ -606,25 +606,10 @@ static void OnPaint(HWND hWnd)
     RECT clientRect;
     GetClientRect(hWnd, &clientRect);
 
-    // 绘制半透明背景
-    {
-        int w = clientRect.right - clientRect.left;
-        int h = clientRect.bottom - clientRect.top;
-        HDC memDC = CreateCompatibleDC(hdc);
-        HBITMAP memBmp = CreateCompatibleBitmap(hdc, w, h);
-        HBITMAP oldBmp = (HBITMAP)SelectObject(memDC, memBmp);
-        RECT memRect = { 0, 0, w, h };
-        HBRUSH brush = CreateSolidBrush(g_crBg);
-        FillRect(memDC, &memRect, brush);
-        DeleteObject(brush);
-
-        BLENDFUNCTION blend = { AC_SRC_OVER, 0, (BYTE)g_nBgAlpha, 0 };
-        AlphaBlend(hdc, 0, 0, w, h, memDC, 0, 0, w, h, blend);
-
-        SelectObject(memDC, oldBmp);
-        DeleteObject(memBmp);
-        DeleteDC(memDC);
-    }
+    // 直接绘制不透明背景（窗口整体的半透明由 SetLayeredWindowAttributes 的全局 alpha 控制）
+    HBRUSH bgBrush = CreateSolidBrush(g_crBg);
+    FillRect(hdc, &clientRect, bgBrush);
+    DeleteObject(bgBrush);
 
     const int margin = 15;
     const int titleBottomSpacing = 15;
@@ -725,7 +710,8 @@ static void ShowBubbleWindow()
 
     if (g_hBubbleWnd)
     {
-        SetLayeredWindowAttributes(g_hBubbleWnd, 0, 255, LWA_ALPHA);
+        // 使用全局 alpha 实现半透明背景（同时文字也会半透明，效果与之前一致）
+        SetLayeredWindowAttributes(g_hBubbleWnd, 0, (BYTE)g_nBgAlpha, LWA_ALPHA);
         ShowWindow(g_hBubbleWnd, SW_SHOWNOACTIVATE);
         UpdateWindow(g_hBubbleWnd);
     }
@@ -788,7 +774,7 @@ static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wp, LPARAM lp)
             // 如果状态发生了变化且窗口当前存在（未销毁），则立即刷新窗口以更新高亮
             if (stateChanged && g_hBubbleWnd != NULL)
             {
-                InvalidateRect(g_hBubbleWnd, NULL, TRUE);
+                InvalidateRect(g_hBubbleWnd, NULL, FALSE);
             }
         }
     }
