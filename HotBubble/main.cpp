@@ -5,6 +5,7 @@
 // 包含通用控件，提供进度条、列表等控件（本例中用于设置窗口）
 #include <Commctrl.h>
 // 自定义头文件，声明设置窗口的打开函数OpenSettingWindow()
+#include "config.h"
 #include "SettingWindow.h" 
 #include "AboutWindow.h"
 #include "BubbleWindow.h"
@@ -67,6 +68,8 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nShow)
     g_hInst = hInst;
 
     InitBubbleWindowHook();
+
+    LoadConfig();
 
     // 启用高DPI感知（关键：解决弹窗文字模糊）
     // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 - 每个显示器独立DPI感知（Win10 1703+）
