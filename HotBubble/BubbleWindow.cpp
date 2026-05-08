@@ -25,7 +25,7 @@ static const wchar_t CLASS_NAME[] = L"BubbleWindowClass";
 // 此段内容是全局申明的变量，重新生成代码时保留此段代码注释
 //  extern int      g_nTitleSize;   标题文字大小
 //  extern int      g_nLabelSize;   标签文字大小
-//  extern int      g_nBgAlpha;     窗口背景颜色透明度
+//  extern int      g_nBgAlpha;     窗口背景颜色透明度 0-255
 //  extern COLORREF g_crTitle;      标题文字颜色
 //  extern COLORREF g_crLabel;      标签文字颜色
 //  extern COLORREF g_crBg;         窗口背景颜色
@@ -275,11 +275,13 @@ static void DrawHotkeysLayout(HDC hdc, const RECT& rect, int startY, int titleHe
 
         // 绘制圆角矩形背景（可选，使用半透明背景色）
         RECT itemRect = { x, y, x + itemWidth, y + lineHeight };
-        HBRUSH bgBrush = CreateSolidBrush(RGB(40, 40, 40)); // 深色半透背景
-        HBRUSH oldBrush = (HBRUSH)SelectObject(hdc, bgBrush);
+        HPEN hPen = CreatePen(PS_SOLID, 1, g_crLabel);
+        HPEN oldPen = (HPEN)SelectObject(hdc, hPen);
+        HBRUSH oldBrush = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
         RoundRect(hdc, itemRect.left, itemRect.top, itemRect.right, itemRect.bottom, 6, 6);
+        SelectObject(hdc, oldPen);
         SelectObject(hdc, oldBrush);
-        DeleteObject(bgBrush);
+        DeleteObject(hPen);
 
         // 绘制文字
         RECT textRect = { x + hotkeyPaddingH, y + hotkeyPaddingV,
@@ -328,8 +330,7 @@ static void ShowBubbleWindow()
 
     if (!g_hBubbleWnd) return;
 
-    BYTE opacity = (BYTE)(255 - g_nBgAlpha);
-    SetLayeredWindowAttributes(g_hBubbleWnd, 0, opacity, LWA_ALPHA);
+    SetLayeredWindowAttributes(g_hBubbleWnd, 0, 255, LWA_ALPHA);
     ShowWindow(g_hBubbleWnd, SW_SHOWNOACTIVATE);
     UpdateWindow(g_hBubbleWnd);
 }
@@ -346,9 +347,32 @@ static void DestroyBubbleWindow()
 // ==================== 窗口绘制函数 ====================
 static void DrawBackground(HDC hdc, const RECT& rect)
 {
+    // 创建与目标 DC 兼容的内存 DC 和位图
+    int width = rect.right - rect.left;
+    int height = rect.bottom - rect.top;
+    HDC memDC = CreateCompatibleDC(hdc);
+    HBITMAP memBmp = CreateCompatibleBitmap(hdc, width, height);
+    HBITMAP oldBmp = (HBITMAP)SelectObject(memDC, memBmp);
+
+    // 先在内存 DC 中填充不透明的背景色
+    RECT memRect = { 0, 0, width, height };
     HBRUSH brush = CreateSolidBrush(g_crBg);
-    FillRect(hdc, &rect, brush);
+    FillRect(memDC, &memRect, brush);
     DeleteObject(brush);
+
+    // 使用 AlphaBlend 将内存 DC 按 g_nBgAlpha 透明度混合到目标 DC
+    BLENDFUNCTION blend = { 0 };
+    blend.BlendOp = AC_SRC_OVER;
+    blend.BlendFlags = 0;
+    blend.SourceConstantAlpha = g_nBgAlpha;       // 背景颜色透明度
+    blend.AlphaFormat = 0;
+
+    AlphaBlend(hdc, rect.left, rect.top, width, height,
+        memDC, 0, 0, width, height, blend);
+
+    SelectObject(memDC, oldBmp);
+    DeleteObject(memBmp);
+    DeleteDC(memDC);
 }
 
 static void DrawTitle(HDC hdc, const RECT& clientRect, int& outTitleHeight)
