@@ -4,6 +4,14 @@
 
 > 推荐给对快捷键不熟悉的初学者使用，能够快速熟悉windows或软件快捷键
 
+# 源码库
+
+[Github：wiainigi/HotBubble](https://github.com/wiainigi/HotBubble)
+
+[Gitee：wiainigi/HotBubble](https://gitee.com/axspic/HotBubble)
+
+
+
 ## 快捷键类型
 
 - 系统快捷键：windows快捷键
@@ -61,5 +69,7 @@ Win+E=打开文件资源管理器
 - 热键提示界面
 
 ![热键提示界面](https://img.cdn1.vip/i/69fecc3d443e6_1778306109.webp "热键提示界面")
+
+
 
 
