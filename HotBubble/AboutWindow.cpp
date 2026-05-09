@@ -45,7 +45,7 @@ static LRESULT CALLBACK AboutWndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp)
         int yLine = 80;
         int lineHeight = 30;
 
-        CreateWindowW(L"STATIC", L"软件名称：热键气泡", WS_CHILD | WS_VISIBLE | SS_LEFT,
+        CreateWindowW(L"STATIC", L"软件名称：热键泡泡", WS_CHILD | WS_VISIBLE | SS_LEFT,
             30, yLine, 360, lineHeight, hWnd, (HMENU)IDC_STATIC_ABOUT_CONTENT, NULL, NULL);
         yLine += lineHeight;
 
@@ -53,7 +53,7 @@ static LRESULT CALLBACK AboutWndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp)
             30, yLine, 360, lineHeight, hWnd, (HMENU)IDC_STATIC_ABOUT_CONTENT, NULL, NULL);
         yLine += lineHeight;
 
-        CreateWindowW(L"STATIC", L"软件主页：https://example.com", WS_CHILD | WS_VISIBLE | SS_LEFT,
+        CreateWindowW(L"STATIC", L"软件主页：没有哦", WS_CHILD | WS_VISIBLE | SS_LEFT,
             30, yLine, 360, lineHeight, hWnd, (HMENU)IDC_STATIC_ABOUT_CONTENT, NULL, NULL);
         yLine += lineHeight;
 
@@ -61,7 +61,7 @@ static LRESULT CALLBACK AboutWndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp)
             30, yLine, 360, lineHeight * 2, hWnd, (HMENU)IDC_STATIC_ABOUT_CONTENT, NULL, NULL);
         yLine += lineHeight * 2;
 
-        CreateWindowW(L"STATIC", L"软件作者：@qq.com", WS_CHILD | WS_VISIBLE | SS_LEFT,
+        CreateWindowW(L"STATIC", L"软件作者：wiainigi@qq.com", WS_CHILD | WS_VISIBLE | SS_LEFT,
             30, yLine, 360, lineHeight, hWnd, (HMENU)IDC_STATIC_ABOUT_CONTENT, NULL, NULL);
 
         // 底部关闭按钮

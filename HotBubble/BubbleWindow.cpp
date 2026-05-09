@@ -33,6 +33,17 @@ static const wchar_t CLASS_NAME[] = L"BubbleWindowClass";
 //  extern COLORREF g_crBg;         窗口背景颜色
 //  extern COLORREF g_crMark;       标记文字颜色
 
+// 引入外部全局变量
+extern int      g_nTitleSize;
+extern int      g_nLabelSize;
+extern int      g_nBgAlpha;
+extern bool     g_bShowWindows;
+extern bool     g_bShowProcess;
+extern COLORREF g_crTitle;
+extern COLORREF g_crLabel;
+extern COLORREF g_crBg;
+extern COLORREF g_crMark;
+
 // 此段内容是keyboards/windows.ini配置文件内容格式（文件夹在程序根目录），重新生成代码时保留此段代码注释
 //  [Info]                          配置文件信息节点
 //  Name = Windows System           配置文件对应的进程名称
@@ -398,44 +409,53 @@ static int CalculateWindowHeight(int screenWidth)
         DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
     HFONT hOldFont = (HFONT)SelectObject(hdc, hTitleFont);
 
-    // 标题1高度
-    RECT titleRect = { 0, 0, screenWidth - 2 * margin, 0 };
-    DrawTextW(hdc, g_titleText.c_str(), -1, &titleRect, DT_CALCRECT | DT_LEFT | DT_TOP | DT_WORDBREAK);
-    int titleHeight1 = titleRect.bottom - titleRect.top;
-
-    // 热键区域1高度
-    SelectObject(hdc, hHotkeyFont);
+    int titleHeight1 = 0;
     int hotkeyHeight1 = 0;
-    if (!g_hotkeyList.empty())
+    int titleHeight2 = 0;
+    int hotkeyHeight2 = 0;
+
+    // Windows 热键块（仅当 g_bShowWindows 为 true 时才计算）
+    if (g_bShowWindows)
     {
-        int x = margin, y = 0, maxWidth = screenWidth - 2 * margin;
-        SIZE textSize;
-        GetTextExtentPoint32W(hdc, L"测", 1, &textSize);
-        int lineHeight = textSize.cy + 8;
-        for (const auto& item : g_hotkeyList)
+        // 标题1高度
+        RECT titleRect = { 0, 0, screenWidth - 2 * margin, 0 };
+        DrawTextW(hdc, g_titleText.c_str(), -1, &titleRect, DT_CALCRECT | DT_LEFT | DT_TOP | DT_WORDBREAK);
+        titleHeight1 = titleRect.bottom - titleRect.top;
+
+        // 热键区域1高度
+        if (!g_hotkeyList.empty())
         {
-            std::wstring display = item.first + L"  " + item.second;
-            GetTextExtentPoint32W(hdc, display.c_str(), (int)display.length(), &textSize);
-            int itemW = textSize.cx + 16;
-            if (x + itemW > maxWidth && x > margin)
+            SelectObject(hdc, hHotkeyFont);
+            int x = margin, y = 0, maxWidth = screenWidth - 2 * margin;
+            SIZE textSize;
+            GetTextExtentPoint32W(hdc, L"测", 1, &textSize);
+            int lineHeight = textSize.cy + 8;
+            for (const auto& item : g_hotkeyList)
             {
-                y += lineHeight + 8;
-                x = margin;
+                std::wstring display = item.first + L"  " + item.second;
+                GetTextExtentPoint32W(hdc, display.c_str(), (int)display.length(), &textSize);
+                int itemW = textSize.cx + 16;
+                if (x + itemW > maxWidth && x > margin)
+                {
+                    y += lineHeight + 8;
+                    x = margin;
+                }
+                x += itemW + 12;
             }
-            x += itemW + 12;
+            hotkeyHeight1 = y + lineHeight;
+            SelectObject(hdc, hTitleFont); // 切回标题字体
         }
-        hotkeyHeight1 = y + lineHeight;
     }
 
-    // 进程块高度
-    int titleHeight2 = 0, hotkeyHeight2 = 0;
-    if (!g_processTitleText.empty())
+    // 进程热键块（仅当 g_bShowProcess 为 true 时才计算）
+    if (g_bShowProcess && !g_processTitleText.empty())
     {
-        SelectObject(hdc, hTitleFont);
+        // 标题2高度
         RECT titleRect2 = { 0, 0, screenWidth - 2 * margin, 0 };
         DrawTextW(hdc, g_processTitleText.c_str(), -1, &titleRect2, DT_CALCRECT | DT_LEFT | DT_TOP | DT_WORDBREAK);
         titleHeight2 = titleRect2.bottom - titleRect2.top;
 
+        // 热键区域2高度
         if (!g_processHotkeyList.empty())
         {
             SelectObject(hdc, hHotkeyFont);
@@ -465,10 +485,15 @@ static int CalculateWindowHeight(int screenWidth)
     DeleteObject(hHotkeyFont);
     ReleaseDC(NULL, hdc);
 
-    int total = margin + titleHeight1 + titleBottomSpacing + hotkeyHeight1;
-    if (!g_processTitleText.empty())
+    int total = margin;
+    if (g_bShowWindows)
     {
-        total += blockSpacing + titleHeight2;
+        total += titleHeight1 + titleBottomSpacing + hotkeyHeight1;
+    }
+    if (g_bShowProcess && !g_processTitleText.empty())
+    {
+        if (g_bShowWindows) total += blockSpacing;
+        total += titleHeight2;
         if (!g_processHotkeyList.empty())
             total += titleBottomSpacing + hotkeyHeight2;
         else
@@ -645,20 +670,28 @@ static void OnPaint(HWND hWnd)
     const int titleBottomSpacing = 15;
     const int blockSpacing = 25;
 
-    int titleH1 = DrawTitle(memDC, clientRect, g_titleText, margin);
     int hotkeyConsumed1 = 0;
-    DrawHotkeysLayout(memDC, clientRect, margin + titleH1 + titleBottomSpacing,
-        g_hotkeyList, hotkeyConsumed1);
-
-    if (!g_processTitleText.empty())
+    int currentY = margin;
+    // 绘制 Windows 热键块（仅当 g_bShowWindows 为 true）
+    if (g_bShowWindows)
     {
-        int startY2 = margin + titleH1 + titleBottomSpacing + hotkeyConsumed1 + blockSpacing;
-        int titleH2 = DrawTitle(memDC, clientRect, g_processTitleText, startY2);
+        int titleH1 = DrawTitle(memDC, clientRect, g_titleText, currentY);
+        DrawHotkeysLayout(memDC, clientRect, currentY + titleH1 + titleBottomSpacing,
+            g_hotkeyList, hotkeyConsumed1);
+        currentY += titleH1 + titleBottomSpacing + hotkeyConsumed1;
+    }
+    // 绘制进程热键块（仅当 g_bShowProcess 为 true 且进程标题不为空）
+    if (g_bShowProcess && !g_processTitleText.empty())
+    {
+        if (g_bShowWindows) currentY += blockSpacing;
+        int titleH2 = DrawTitle(memDC, clientRect, g_processTitleText, currentY);
+        int hotkeyConsumed2 = 0;
         if (!g_processHotkeyList.empty())
         {
-            DrawHotkeysLayout(memDC, clientRect, startY2 + titleH2 + titleBottomSpacing,
-                g_processHotkeyList, hotkeyConsumed1);
+            DrawHotkeysLayout(memDC, clientRect, currentY + titleH2 + titleBottomSpacing,
+                g_processHotkeyList, hotkeyConsumed2);
         }
+        // 无需额外处理，因为最终高度由窗口大小决定，这里只负责绘制
     }
 
     // 将内存 DC 的内容一次性复制到屏幕 DC
