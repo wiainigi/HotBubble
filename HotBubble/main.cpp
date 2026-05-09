@@ -27,12 +27,65 @@ HWND g_hWnd = NULL;
 NOTIFYICONDATA g_nid = { 0 };
 HINSTANCE g_hInst = NULL;
 
+// DPI 常量（编译期不依赖高版本 SDK，运行时动态加载对应函数）
+#ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((DPI_AWARENESS_CONTEXT)-4)
+#endif
+#ifndef PROCESS_PER_MONITOR_DPI_AWARE
+#define PROCESS_PER_MONITOR_DPI_AWARE 1
+#endif
+
+// DPI 感知初始化（兼容 Windows 7，运行时动态加载）
+static void InitDpiAwareness()
+{
+    HMODULE hUser32 = GetModuleHandleW(L"user32.dll");
+
+    // 1) Windows 10 1607+: SetProcessDpiAwarenessContext
+    if (hUser32)
+    {
+        typedef BOOL(WINAPI* FnSetProcessDpiAwarenessContext)(DPI_AWARENESS_CONTEXT);
+        auto pFn = (FnSetProcessDpiAwarenessContext)GetProcAddress(hUser32, "SetProcessDpiAwarenessContext");
+        if (pFn)
+        {
+            pFn(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+            return;
+        }
+    }
+
+    // 2) Windows 8.1+: shcore.dll -> SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE)
+    HMODULE hShcore = LoadLibraryW(L"shcore.dll");
+    if (hShcore)
+    {
+        typedef HRESULT(WINAPI* FnSetProcessDpiAwareness)(int);
+        auto pFn = (FnSetProcessDpiAwareness)GetProcAddress(hShcore, "SetProcessDpiAwareness");
+        if (pFn)
+        {
+            pFn(PROCESS_PER_MONITOR_DPI_AWARE);
+            FreeLibrary(hShcore);
+            return;
+        }
+        FreeLibrary(hShcore);
+    }
+
+    // 3) Windows Vista+: SetProcessDPIAware（系统级 DPI 感知，回退方案）
+    if (hUser32)
+    {
+        typedef BOOL(WINAPI* FnSetProcessDPIAware)();
+        auto pFn = (FnSetProcessDPIAware)GetProcAddress(hUser32, "SetProcessDPIAware");
+        if (pFn)
+        {
+            pFn();
+        }
+    }
+}
+
+
 // 程序入口点
 int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nShow)
 {
     g_hInst = hInst;
 
-    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    InitDpiAwareness();
 
     InitBubbleWindowHook();
     LoadConfig();
