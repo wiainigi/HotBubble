@@ -4,13 +4,13 @@
 #include <stdio.h>
 
 // ==================== 全局配置变量（定义） ====================
-int      g_nTitleSize = 16;       // 标题字体大小
-int      g_nLabelSize = 12;       // 标签字体大小
-int      g_nBgAlpha = 255;      // 背景透明度（用户语义：0=不透明，255=全透明）
-COLORREF g_crTitle = RGB(255, 255, 255);   // 标题文字颜色（默认白）
+int      g_nTitleSize = 20;       // 标题字体大小
+int      g_nLabelSize = 16;       // 标签字体大小
+int      g_nBgAlpha = 180;        // 背景透明度（用户语义：0=不透明，255=全透明）
+COLORREF g_crTitle = RGB(50, 150, 250);   // 标题文字颜色（默认白）
 COLORREF g_crLabel = RGB(255, 255, 255);   // 标签文字颜色（默认白）
-COLORREF g_crBg = RGB(0, 0, 0);         // 背景颜色（默认黑）
-COLORREF g_crMark = RGB(255, 60, 60);     // 标记颜色（默认红）
+COLORREF g_crBg = RGB(0, 0, 0);            // 背景颜色（默认黑）
+COLORREF g_crMark = RGB(255, 68, 72);      // 标记颜色（默认红）
 
 // 获取配置文件路径（与可执行文件同目录）
 static const wchar_t* GetConfigFilePath()
@@ -45,6 +45,14 @@ static void FormatColor(COLORREF color, wchar_t* out, size_t size)
 void LoadConfig()
 {
     const wchar_t* file = GetConfigFilePath();
+
+    // +++++++++++ 新增：若配置文件不存在，则使用默认值创建 +++++++++++
+    if (GetFileAttributesW(file) == INVALID_FILE_ATTRIBUTES)
+    {
+        SaveConfig();   // 此时全局变量均为默认值，保存后生成配置文件
+    }
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
     wchar_t buffer[64];
 
     // 读取整数
