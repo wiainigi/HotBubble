@@ -32,6 +32,17 @@
 //  showWindows = 1
 //  showProcess = 1
 
+// 引用外部全局变量
+extern int      g_nTitleSize;
+extern int      g_nLabelSize;
+extern int      g_nBgAlpha;
+extern bool     g_bShowWindows;
+extern bool     g_bShowProcess;
+extern COLORREF g_crTitle;
+extern COLORREF g_crLabel;
+extern COLORREF g_crBg;
+extern COLORREF g_crMark;
+
 #define IDC_EDIT_TITLE_SIZE         1101
 #define IDC_EDIT_LABEL_SIZE         1102
 #define IDC_BTN_TITLE_COLOR         1201
@@ -48,6 +59,8 @@
 #define IDC_STATIC_TITLE_TEXT       1601
 #define IDC_STATIC_CLOSE_BTN        1602
 #define IDC_STATIC_LABEL_TEXT       1603
+#define IDC_CHECK_SHOW_WINDOWS      1604
+#define IDC_CHECK_SHOW_PROCESS      1605
 
 typedef struct {
     int      titleSize;
@@ -133,12 +146,22 @@ LRESULT CALLBACK SettingWndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp)
             40, yBase, 140, 20, hWnd, (HMENU)IDC_STATIC_LABEL_TEXT, NULL, NULL);
         CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER,
             190, yBase - 2, 80, 22, hWnd, (HMENU)IDC_EDIT_TITLE_SIZE, NULL, NULL);
+
+        // 添加“显示系统快捷键”复选框
+        CreateWindowW(L"BUTTON", L"显示系统快捷键", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+            400, yBase - 2, 180, 22, hWnd, (HMENU)IDC_CHECK_SHOW_WINDOWS, NULL, NULL);
         yBase += 35;
+
         CreateWindowW(L"STATIC", L"标签文字大小：", WS_CHILD | WS_VISIBLE | SS_RIGHT,
             40, yBase, 140, 20, hWnd, (HMENU)IDC_STATIC_LABEL_TEXT, NULL, NULL);
         CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER,
             190, yBase - 2, 80, 22, hWnd, (HMENU)IDC_EDIT_LABEL_SIZE, NULL, NULL);
+
+        // 添加“显示程序快捷键”复选框
+        CreateWindowW(L"BUTTON", L"显示程序快捷键", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+            400, yBase - 2, 180, 22, hWnd, (HMENU)IDC_CHECK_SHOW_PROCESS, NULL, NULL);
         yBase += 35;
+
         CreateWindowW(L"STATIC", L"背景透明度：", WS_CHILD | WS_VISIBLE | SS_RIGHT,
             40, yBase, 140, 20, hWnd, (HMENU)IDC_STATIC_LABEL_TEXT, NULL, NULL);
         CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER,
@@ -199,6 +222,9 @@ LRESULT CALLBACK SettingWndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp)
         SetDlgItemInt(hWnd, IDC_EDIT_TITLE_SIZE, g_nTitleSize);
         SetDlgItemInt(hWnd, IDC_EDIT_LABEL_SIZE, g_nLabelSize);
         SetDlgItemInt(hWnd, IDC_EDIT_BG_ALPHA, g_nBgAlpha);
+        // 设置复选框状态
+        CheckDlgButton(hWnd, IDC_CHECK_SHOW_WINDOWS, g_bShowWindows ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hWnd, IDC_CHECK_SHOW_PROCESS, g_bShowProcess ? BST_CHECKED : BST_UNCHECKED);
 
         g_tempConfig.titleSize = g_nTitleSize;
         g_tempConfig.labelSize = g_nLabelSize;
@@ -322,6 +348,9 @@ LRESULT CALLBACK SettingWndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp)
             g_crLabel = g_tempConfig.crLabel;
             g_crBg = g_tempConfig.crBg;
             g_crMark = g_tempConfig.crMark;
+            // 读取复选框状态并更新全局变量
+            g_bShowWindows = (IsDlgButtonChecked(hWnd, IDC_CHECK_SHOW_WINDOWS) == BST_CHECKED);
+            g_bShowProcess = (IsDlgButtonChecked(hWnd, IDC_CHECK_SHOW_PROCESS) == BST_CHECKED);
             SaveConfig();
             DestroyWindow(hWnd);
             g_hSetting = NULL;
