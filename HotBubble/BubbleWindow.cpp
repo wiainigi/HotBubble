@@ -22,17 +22,6 @@ static int         g_modKeyStates[256] = { 0 };
 static WNDCLASS    g_wc = { 0 };
 static const wchar_t CLASS_NAME[] = L"BubbleWindowClass";
 
-// 此段内容是全局申明的变量，重新生成代码时保留此段代码注释
-//  extern int      g_nTitleSize;   标题文字大小
-//  extern int      g_nLabelSize;   标签文字大小
-//  extern int      g_nBgAlpha;     窗口背景颜色透明度 0-255
-//  extern bool     g_bShowWindows; 是否显示系统热键
-//  extern bool     g_bShowProcess; 是否显示程序热键
-//  extern COLORREF g_crTitle;      标题文字颜色
-//  extern COLORREF g_crLabel;      标签文字颜色
-//  extern COLORREF g_crBg;         窗口背景颜色
-//  extern COLORREF g_crMark;       标记文字颜色
-
 // 引入外部全局变量
 extern int      g_nTitleSize;
 extern int      g_nLabelSize;
@@ -43,17 +32,6 @@ extern COLORREF g_crTitle;
 extern COLORREF g_crLabel;
 extern COLORREF g_crBg;
 extern COLORREF g_crMark;
-
-// 此段内容是keyboards/windows.ini配置文件内容格式（文件夹在程序根目录），重新生成代码时保留此段代码注释
-//  [Info]                          配置文件信息节点
-//  Name = Windows System           配置文件对应的进程名称
-//  Description = Windows 系统       进程说明
-//  
-//  [Keys]                          热键信息节点
-//  Win = 打开 / 关闭开始菜单          热键和热键作用
-//  Win + D = 显示桌面
-//  Win + E = 打开文件资源管理器
-//  ...
 
 // ------------------- 全局配置文件数据 -------------------
 static std::wstring       g_titleText;
@@ -121,14 +99,102 @@ static std::wstring GetForegroundProcessName()
     return L"";
 }
 
-// ==================== 读取并解析 windows.ini ====================
+// INI 解析结果
+struct IniData {
+    bool nameSet = false;
+    std::wstring name;
+    std::wstring description;
+    std::vector<std::pair<std::wstring, std::wstring>> keys;
+};
+
+// 通用 INI 文件解析函数
+static bool ParseCustomIni(const std::wstring& filePath, IniData& out)
+{
+    std::ifstream file(filePath);
+    if (!file.is_open()) return false;
+
+    auto trim = [](std::string& s) {
+        s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
+            return !std::isspace(ch);
+            }));
+        s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) {
+            return !std::isspace(ch);
+            }).base(), s.end());
+        };
+
+    auto utf8ToWide = [](const std::string& s) -> std::wstring {
+        if (s.empty()) return L"";
+        int len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, NULL, 0);
+        if (len <= 0) return L"";
+        std::wstring w(len - 1, L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, &w[0], len);
+        return w;
+        };
+
+    std::string line, section;
+    while (std::getline(file, line))
+    {
+        if (line.empty() || line[0] == ';' || line[0] == '#') continue;
+        trim(line);
+        if (line.empty()) continue;
+
+        if (line.front() == '[' && line.back() == ']')
+        {
+            section = line;
+            continue;
+        }
+
+        size_t eq = line.find('=');
+        if (eq == std::string::npos) continue;
+
+        std::string key = line.substr(0, eq);
+        std::string value = line.substr(eq + 1);
+        trim(key);
+        trim(value);
+        if (key.empty()) continue;
+
+        if (section == "[Info]")
+        {
+            if (key == "Name" && !value.empty())
+            {
+                out.name = utf8ToWide(value);
+                out.nameSet = true;
+            }
+            else if (key == "Description" && !value.empty())
+            {
+                out.description = utf8ToWide(value);
+            }
+        }
+        else if (section == "[Keys]")
+        {
+            std::wstring wk = utf8ToWide(key);
+            if (!wk.empty())
+                out.keys.push_back({ wk, utf8ToWide(value) });
+        }
+    }
+    return true;
+}
+
+// 根据 Name/Description 构建标题文本
+static std::wstring BuildTitle(const std::wstring& name, const std::wstring& desc, const std::wstring& fallback)
+{
+    if (!name.empty() && !desc.empty())
+        return name + L"（" + desc + L"）";
+    if (!name.empty())
+        return name;
+    if (!desc.empty())
+        return desc;
+    return fallback;
+}
+
+// 读取并解析 windows.ini
 static bool LoadConfiguration()
 {
     if (g_configLoaded) return true;
 
+    IniData data;
     std::wstring iniPath = GetExeDirectory() + L"keyboards\\windows.ini";
-    std::ifstream file(iniPath);
-    if (!file.is_open())
+    if (!ParseCustomIni(iniPath, data))
     {
         g_titleText = L"Windows 快捷键指南";
         g_hotkeyList.clear();
@@ -136,179 +202,26 @@ static bool LoadConfiguration()
         return false;
     }
 
-    g_titleText.clear();
-    g_hotkeyList.clear();
-
-    std::string line;
-    std::string currentSection;
-    const std::string sectionInfo = "[Info]";
-    const std::string sectionKeys = "[Keys]";
-
-    auto trim = [](std::string& s) {
-        s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
-            return !std::isspace(ch);
-            }));
-        s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) {
-            return !std::isspace(ch);
-            }).base(), s.end());
-        };
-
-    auto utf8ToWide = [](const std::string& utf8) -> std::wstring {
-        if (utf8.empty()) return L"";
-        int len = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, NULL, 0);
-        if (len <= 0) return L"";
-        std::wstring wstr(len - 1, L'\0');
-        MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, &wstr[0], len);
-        return wstr;
-        };
-
-    while (std::getline(file, line))
-    {
-        if (line.empty() || line[0] == ';' || line[0] == '#')
-            continue;
-
-        trim(line);
-        if (line.empty()) continue;
-
-        if (line.front() == '[' && line.back() == ']')
-        {
-            currentSection = line;
-            continue;
-        }
-
-        size_t eqPos = line.find('=');
-        if (eqPos == std::string::npos) continue;
-
-        std::string key = line.substr(0, eqPos);
-        std::string value = line.substr(eqPos + 1);
-        trim(key);
-        trim(value);
-        if (key.empty()) continue;
-
-        if (currentSection == sectionInfo)
-        {
-            if (key == "Name") {
-                if (!value.empty()) {
-                    g_titleText = utf8ToWide(value);          // ① 先设置 Name
-                }
-            }
-            else if (key == "Description") {
-                if (!value.empty()) {
-                    if (g_titleText.empty()) {
-                        g_titleText = utf8ToWide(value);      // ② 没有 Name 时，仅存 Description
-                    }
-                    else {
-                        g_titleText += L"（" + utf8ToWide(value) + L"）";  // ③ 已有 Name，拼接
-                    }
-                }
-            }
-        }
-        else if (currentSection == sectionKeys)
-        {
-            std::wstring wKey = utf8ToWide(key);
-            std::wstring wValue = utf8ToWide(value);
-            if (!wKey.empty())
-                g_hotkeyList.push_back({ wKey, wValue });
-        }
-    }
-
-    if (g_titleText.empty())
-        g_titleText = L"Windows 快捷键指南";
-
+    g_titleText = BuildTitle(data.name, data.description, L"Windows 快捷键指南");
+    g_hotkeyList = std::move(data.keys);
     g_configLoaded = true;
     return true;
 }
 
-// ==================== 读取并解析进程专属 .ini ====================
+// 读取并解析进程专属 .ini
 static bool LoadProcessConfiguration(const std::wstring& processExeName)
 {
     g_processTitleText.clear();
     g_processHotkeyList.clear();
 
-    if (processExeName.empty())
-        return false;
+    if (processExeName.empty()) return false;
 
+    IniData data;
     std::wstring iniPath = GetExeDirectory() + L"keyboards\\" + processExeName + L".ini";
-    std::ifstream file(iniPath);
-    if (!file.is_open())
-        return false;
+    if (!ParseCustomIni(iniPath, data)) return false;
 
-    std::string line;
-    std::string currentSection;
-    const std::string sectionInfo = "[Info]";
-    const std::string sectionKeys = "[Keys]";
-
-    auto trim = [](std::string& s) {
-        s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
-            return !std::isspace(ch);
-            }));
-        s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) {
-            return !std::isspace(ch);
-            }).base(), s.end());
-        };
-
-    auto utf8ToWide = [](const std::string& utf8) -> std::wstring {
-        if (utf8.empty()) return L"";
-        int len = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, NULL, 0);
-        if (len <= 0) return L"";
-        std::wstring wstr(len - 1, L'\0');
-        MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, &wstr[0], len);
-        return wstr;
-        };
-
-    while (std::getline(file, line))
-    {
-        if (line.empty() || line[0] == ';' || line[0] == '#')
-            continue;
-
-        trim(line);
-        if (line.empty()) continue;
-
-        if (line.front() == '[' && line.back() == ']')
-        {
-            currentSection = line;
-            continue;
-        }
-
-        size_t eqPos = line.find('=');
-        if (eqPos == std::string::npos) continue;
-
-        std::string key = line.substr(0, eqPos);
-        std::string value = line.substr(eqPos + 1);
-        trim(key);
-        trim(value);
-        if (key.empty()) continue;
-
-        if (currentSection == sectionInfo)
-        {
-            if (key == "Name") {
-                if (!value.empty()) {
-                    g_processTitleText = utf8ToWide(value);          // ① 先设置 Name
-                }
-            }
-            else if (key == "Description") {
-                if (!value.empty()) {
-                    if (g_processTitleText.empty()) {
-                        g_processTitleText = utf8ToWide(value);      // ② 没有 Name 时，仅存 Description
-                    }
-                    else {
-                        g_processTitleText += L"（" + utf8ToWide(value) + L"）";  // ③ 已有 Name，拼接
-                    }
-                }
-            }
-        }
-        else if (currentSection == sectionKeys)
-        {
-            std::wstring wKey = utf8ToWide(key);
-            std::wstring wValue = utf8ToWide(value);
-            if (!wKey.empty())
-                g_processHotkeyList.push_back({ wKey, wValue });
-        }
-    }
-
-    if (g_processTitleText.empty())
-        g_processTitleText = processExeName;
-
+    g_processTitleText = BuildTitle(data.name, data.description, processExeName);
+    g_processHotkeyList = std::move(data.keys);
     return true;
 }
 

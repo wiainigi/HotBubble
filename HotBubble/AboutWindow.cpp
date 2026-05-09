@@ -1,10 +1,8 @@
 ﻿#include "AboutWindow.h"
-#include "Config.h"
+#include "config.h"
 #include <windows.h>
-#include <commctrl.h>
 #include <wingdi.h>
 
-#pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "msimg32.lib")
 
 #define IDC_STATIC_TITLE_TEXT       1701
