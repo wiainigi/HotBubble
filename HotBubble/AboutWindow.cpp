@@ -47,11 +47,11 @@ static LRESULT CALLBACK AboutWndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp)
             30, yLine, 360, lineHeight, hWnd, (HMENU)IDC_STATIC_ABOUT_CONTENT, NULL, NULL);
         yLine += lineHeight;
 
-        CreateWindowW(L"STATIC", L"软件版本：v0.0.1", WS_CHILD | WS_VISIBLE | SS_LEFT,
+        CreateWindowW(L"STATIC", L"软件版本：v0.0.2", WS_CHILD | WS_VISIBLE | SS_LEFT,
             30, yLine, 360, lineHeight, hWnd, (HMENU)IDC_STATIC_ABOUT_CONTENT, NULL, NULL);
         yLine += lineHeight;
 
-        CreateWindowW(L"STATIC", L"软件主页：没有哦", WS_CHILD | WS_VISIBLE | SS_LEFT,
+        CreateWindowW(L"STATIC", L"软件主页：https://hotbubble.axspic.com/", WS_CHILD | WS_VISIBLE | SS_LEFT,
             30, yLine, 360, lineHeight, hWnd, (HMENU)IDC_STATIC_ABOUT_CONTENT, NULL, NULL);
         yLine += lineHeight;
 
