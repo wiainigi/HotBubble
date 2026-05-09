@@ -26,6 +26,8 @@ static const wchar_t CLASS_NAME[] = L"BubbleWindowClass";
 //  extern int      g_nTitleSize;   标题文字大小
 //  extern int      g_nLabelSize;   标签文字大小
 //  extern int      g_nBgAlpha;     窗口背景颜色透明度 0-255
+//  extern bool     g_iShowWindows; 是否显示系统热键
+//  extern bool     g_iShowProcess; 是否显示程序热键
 //  extern COLORREF g_crTitle;      标题文字颜色
 //  extern COLORREF g_crLabel;      标签文字颜色
 //  extern COLORREF g_crBg;         窗口背景颜色
@@ -174,10 +176,21 @@ static bool LoadConfiguration()
 
         if (currentSection == sectionInfo)
         {
-            if (key == "Name" && g_titleText.empty())
-                g_titleText = utf8ToWide(value);
-            else if (key == "Description" && g_titleText.empty())
-                g_titleText = utf8ToWide(value);
+            if (key == "Name") {
+                if (!value.empty()) {
+                    g_titleText = utf8ToWide(value);          // ① 先设置 Name
+                }
+            }
+            else if (key == "Description") {
+                if (!value.empty()) {
+                    if (g_titleText.empty()) {
+                        g_titleText = utf8ToWide(value);      // ② 没有 Name 时，仅存 Description
+                    }
+                    else {
+                        g_titleText += L"（" + utf8ToWide(value) + L"）";  // ③ 已有 Name，拼接
+                    }
+                }
+            }
         }
         else if (currentSection == sectionKeys)
         {
@@ -257,10 +270,21 @@ static bool LoadProcessConfiguration(const std::wstring& processExeName)
 
         if (currentSection == sectionInfo)
         {
-            if (key == "Name" && g_processTitleText.empty())
-                g_processTitleText = utf8ToWide(value);
-            else if (key == "Description" && g_processTitleText.empty())
-                g_processTitleText = utf8ToWide(value);
+            if (key == "Name") {
+                if (!value.empty()) {
+                    g_processTitleText = utf8ToWide(value);          // ① 先设置 Name
+                }
+            }
+            else if (key == "Description") {
+                if (!value.empty()) {
+                    if (g_processTitleText.empty()) {
+                        g_processTitleText = utf8ToWide(value);      // ② 没有 Name 时，仅存 Description
+                    }
+                    else {
+                        g_processTitleText += L"（" + utf8ToWide(value) + L"）";  // ③ 已有 Name，拼接
+                    }
+                }
+            }
         }
         else if (currentSection == sectionKeys)
         {

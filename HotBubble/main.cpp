@@ -53,6 +53,8 @@ HINSTANCE g_hInst = NULL;
 extern int      g_nTitleSize;
 extern int      g_nLabelSize;
 extern int      g_nBgAlpha;
+extern bool     g_iShowWindows;
+extern bool     g_iShowProcess;
 extern COLORREF g_crTitle;
 extern COLORREF g_crLabel;
 extern COLORREF g_crBg;
