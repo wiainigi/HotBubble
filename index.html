@@ -1,0 +1,1578 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="热键泡泡 - 按下修饰键时弹出快捷键提示的 Windows 小工具">
+    <meta name="keywords"
+        content="热键泡泡, HotBubble, 快捷键提示, Windows小工具, 快捷键学习, 键盘快捷键, 修饰键提示, 快捷键记忆, 效率工具, Windows工具, 快捷键助手">
+    <meta name="robots" content="index, follow">
+    <meta property="og:title" content="热键泡泡 HotBubble - 快捷键提示助手">
+    <meta property="og:description" content="按下修饰键时即时弹出快捷键提示，助你快速掌握 Windows 与软件快捷操作的轻量级小工具。">
+    <meta property="og:type" content="website">
+    <title>热键泡泡 HotBubble - 快捷键提示助手</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🫧</text></svg>">
+    <style>
+        /* ===== CSS 变量 ===== */
+        :root {
+            --primary-1: #4F46E5;
+            --primary-2: #7C3AED;
+            --primary-3: #818CF8;
+            --bg-white: #FFFFFF;
+            --bg-light: #F8FAFC;
+            --bg-dark: #0F172A;
+            --text-primary: #1E293B;
+            --text-secondary: #64748B;
+            --text-white: #FFFFFF;
+            --green: #10B981;
+            --red: #EF4444;
+            --yellow: #F59E0B;
+            --blue: #3B82F6;
+            --font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+            --max-width: 1140px;
+            --nav-height: 68px;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 24px;
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 20px rgba(79, 70, 229, 0.15);
+            --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.12);
+            --shadow-xl: 0 20px 60px rgba(79, 70, 229, 0.25);
+            --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* ===== Reset & Base ===== */
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+            font-family: var(--font-family);
+            font-size: 16px;
+            font-weight: 400;
+            color: var(--text-primary);
+            background: var(--bg-white);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        a {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        ul {
+            list-style: none;
+        }
+
+        img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .container {
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* ===== Section Header ===== */
+        .section-header {
+            text-align: center;
+            margin-bottom: 56px;
+        }
+
+        .section-tag {
+            display: inline-block;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--primary-1);
+            background: linear-gradient(135deg, rgba(79, 70, 229, 0.1), rgba(124, 58, 237, 0.1));
+            padding: 6px 16px;
+            border-radius: 20px;
+            margin-bottom: 16px;
+        }
+
+        .section-title {
+            font-size: 36px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+            letter-spacing: -0.5px;
+        }
+
+        .section-desc {
+            font-size: 17px;
+            color: var(--text-secondary);
+            max-width: 520px;
+            margin: 0 auto;
+        }
+
+        /* ===== 导航栏 ===== */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            height: var(--nav-height);
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border-bottom: 1px solid rgba(79, 70, 229, 0.08);
+            transition: var(--transition);
+        }
+
+        .navbar.scrolled {
+            box-shadow: 0 1px 12px rgba(0, 0, 0, 0.06);
+        }
+
+        .navbar-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 100%;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .logo-icon {
+            font-size: 26px;
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav-links a {
+            padding: 8px 18px;
+            border-radius: 20px;
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            transition: var(--transition);
+        }
+
+        .nav-links a:hover {
+            color: var(--primary-1);
+            background: rgba(79, 70, 229, 0.08);
+        }
+
+        .mobile-nav-toggle {
+            display: none;
+            flex-direction: column;
+            gap: 5px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+        }
+
+        .mobile-nav-toggle span {
+            display: block;
+            width: 24px;
+            height: 2px;
+            background: var(--text-primary);
+            border-radius: 2px;
+            transition: var(--transition);
+        }
+
+        /* ===== Hero 区域 ===== */
+        .hero {
+            position: relative;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            padding-top: var(--nav-height);
+        }
+
+        .hero-bg {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, #EEF2FF 0%, #F5F3FF 30%, #EDE9FE 60%, #E0E7FF 100%);
+            z-index: 0;
+        }
+
+        .hero-bg::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -20%;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(79, 70, 229, 0.08) 0%, transparent 70%);
+            border-radius: 50%;
+            animation: float 8s ease-in-out infinite;
+        }
+
+        .hero-bg::after {
+            content: '';
+            position: absolute;
+            bottom: -30%;
+            left: -10%;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(124, 58, 237, 0.08) 0%, transparent 70%);
+            border-radius: 50%;
+            animation: float 10s ease-in-out infinite reverse;
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translate(0, 0) scale(1);
+            }
+
+            50% {
+                transform: translate(30px, -30px) scale(1.1);
+            }
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            max-width: 720px;
+            padding: 40px 24px;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--primary-1);
+            background: rgba(79, 70, 229, 0.1);
+            padding: 8px 20px;
+            border-radius: 20px;
+            margin-bottom: 28px;
+            animation: fadeInUp 0.6s ease both;
+        }
+
+        .hero-title {
+            font-size: 56px;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--primary-1), var(--primary-2));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+            letter-spacing: -1px;
+            animation: fadeInUp 0.6s 0.1s ease both;
+        }
+
+        .hero-subtitle {
+            font-size: 22px;
+            font-weight: 600;
+            color: var(--primary-3);
+            margin-bottom: 20px;
+            letter-spacing: 6px;
+            text-transform: uppercase;
+            animation: fadeInUp 0.6s 0.2s ease both;
+        }
+
+        .hero-desc {
+            font-size: 18px;
+            color: var(--text-secondary);
+            line-height: 1.8;
+            margin-bottom: 36px;
+            animation: fadeInUp 0.6s 0.3s ease both;
+        }
+
+        .hero-desc kbd {
+            display: inline-block;
+            padding: 3px 10px;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: inherit;
+            color: var(--primary-1);
+            background: rgba(79, 70, 229, 0.1);
+            border: 1px solid rgba(79, 70, 229, 0.2);
+            border-radius: 6px;
+            margin: 0 2px;
+        }
+
+        .hero-actions {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            animation: fadeInUp 0.6s 0.4s ease both;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 32px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            transition: var(--transition);
+            cursor: pointer;
+        }
+
+        .btn-icon {
+            width: 20px;
+            height: 20px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-1), var(--primary-2));
+            color: var(--text-white);
+            box-shadow: 0 4px 20px rgba(79, 70, 229, 0.35);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(79, 70, 229, 0.45);
+        }
+
+        .btn-secondary {
+            background: var(--bg-white);
+            color: var(--text-primary);
+            border: 1px solid rgba(79, 70, 229, 0.15);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--primary-3);
+            color: var(--primary-1);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-download {
+            background: linear-gradient(135deg, #10B981, #059669);
+            color: var(--text-white);
+            box-shadow: 0 4px 20px rgba(16, 185, 129, 0.35);
+        }
+
+        .btn-download:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(16, 185, 129, 0.45);
+        }
+
+        .btn-github {
+            background: #24292F;
+            color: var(--text-white);
+            box-shadow: 0 4px 16px rgba(36, 41, 47, 0.2);
+        }
+
+        .btn-github:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(36, 41, 47, 0.3);
+        }
+
+        .btn-gitee {
+            background: #C71D23;
+            color: var(--text-white);
+            box-shadow: 0 4px 16px rgba(199, 29, 35, 0.2);
+        }
+
+        .btn-gitee:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(199, 29, 35, 0.3);
+        }
+
+        .hero-actions-divider {
+            width: 100%;
+            text-align: center;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            opacity: 0.6;
+            margin: 4px 0;
+        }
+
+        /* 滚动指示器 */
+        .scroll-indicator {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            opacity: 0.5;
+            animation: fadeInUp 0.6s 0.8s ease both;
+        }
+
+        .scroll-indicator span {
+            display: block;
+            width: 3px;
+            height: 12px;
+            background: var(--primary-3);
+            border-radius: 2px;
+            animation: scrollBounce 2s ease infinite;
+        }
+
+        .scroll-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .scroll-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes scrollBounce {
+
+            0%,
+            100% {
+                opacity: 0.3;
+                transform: translateY(0);
+            }
+
+            50% {
+                opacity: 1;
+                transform: translateY(6px);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(24px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ===== 特色区 ===== */
+        .features {
+            padding: 100px 0;
+            background: var(--bg-white);
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+        }
+
+        .feature-card {
+            background: var(--bg-white);
+            border: 1px solid rgba(79, 70, 229, 0.06);
+            border-radius: var(--radius-lg);
+            padding: 36px 28px;
+            text-align: center;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary-1), var(--primary-2));
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: var(--transition);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 12px 40px rgba(79, 70, 229, 0.1);
+            border-color: rgba(79, 70, 229, 0.12);
+        }
+
+        .feature-card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .feature-icon {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 20px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+        }
+
+        .feature-icon svg {
+            width: 26px;
+            height: 26px;
+        }
+
+        .feature-card:hover .feature-icon {
+            transform: scale(1.1) rotate(-5deg);
+        }
+
+        .icon-shortcut {
+            background: linear-gradient(135deg, rgba(79, 70, 229, 0.12), rgba(79, 70, 229, 0.05));
+            color: var(--primary-1);
+        }
+
+        .icon-mark {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(16, 185, 129, 0.05));
+            color: var(--green);
+        }
+
+        .icon-theme {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.05));
+            color: var(--yellow);
+        }
+
+        .icon-small {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(59, 130, 246, 0.05));
+            color: var(--blue);
+        }
+
+        .icon-memory {
+            background: linear-gradient(135deg, rgba(124, 58, 237, 0.12), rgba(124, 58, 237, 0.05));
+            color: var(--primary-2);
+        }
+
+        .icon-config {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(239, 68, 68, 0.05));
+            color: var(--red);
+        }
+
+        .icon-position {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(16, 185, 129, 0.05));
+            color: var(--green);
+        }
+
+        .feature-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 10px;
+        }
+
+        .feature-desc {
+            font-size: 15px;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+
+        /* ===== 截图区 ===== */
+        .screenshots {
+            padding: 100px 0;
+            background: var(--bg-light);
+        }
+
+        .screenshot-gallery {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+        }
+
+        .screenshot-item {
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            background: var(--bg-white);
+            box-shadow: var(--shadow-sm);
+            transition: var(--transition);
+        }
+
+        .screenshot-item:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .screenshot-item a {
+            display: block;
+            cursor: pointer;
+        }
+
+        .screenshot-item img {
+            width: 100%;
+            height: 220px;
+            object-fit: cover;
+            transition: var(--transition);
+        }
+
+        .screenshot-item:hover img {
+            transform: scale(1.03);
+        }
+
+        .screenshot-item figcaption {
+            padding: 14px 18px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-align: center;
+            background: var(--bg-white);
+        }
+
+        .img-placeholder {
+            width: 100%;
+            height: 220px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            color: var(--text-secondary);
+            background: var(--bg-light);
+            font-size: 14px;
+        }
+
+        .img-placeholder svg {
+            width: 40px;
+            height: 40px;
+            opacity: 0.4;
+        }
+
+        /* ===== Lightbox ===== */
+        .lightbox {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            background: rgba(15, 23, 42, 0.92);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.3s ease both;
+        }
+
+        .lightbox:target {
+            display: flex;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        .lightbox-close {
+            position: absolute;
+            top: 20px;
+            right: 28px;
+            font-size: 40px;
+            color: rgba(255, 255, 255, 0.7);
+            transition: var(--transition);
+            line-height: 1;
+            z-index: 1;
+        }
+
+        .lightbox-close:hover {
+            color: var(--text-white);
+            transform: rotate(90deg);
+        }
+
+        .lightbox-content {
+            max-width: 80vw;
+            max-height: 85vh;
+            text-align: center;
+            animation: zoomIn 0.3s ease both;
+        }
+
+        @keyframes zoomIn {
+            from {
+                transform: scale(0.9);
+                opacity: 0;
+            }
+
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .lightbox-content img {
+            max-width: 100%;
+            max-height: 75vh;
+            border-radius: var(--radius-md);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .lightbox-caption {
+            display: block;
+            margin-top: 16px;
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.8);
+            font-weight: 500;
+        }
+
+        /* ===== 使用说明区 ===== */
+        .usage {
+            padding: 100px 0;
+            background: var(--bg-white);
+        }
+
+        .usage-steps {
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .usage-step {
+            display: flex;
+            gap: 20px;
+            padding: 24px 0;
+            border-bottom: 1px solid rgba(79, 70, 229, 0.06);
+            transition: var(--transition);
+        }
+
+        .usage-step:last-child {
+            border-bottom: none;
+        }
+
+        .usage-step:hover {
+            transform: translateX(8px);
+        }
+
+        .step-number {
+            flex-shrink: 0;
+            width: 44px;
+            height: 44px;
+            border-radius: 14px;
+            background: linear-gradient(135deg, var(--primary-1), var(--primary-2));
+            color: var(--text-white);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: 700;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
+        }
+
+        .step-content h3 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+
+        .step-content p {
+            font-size: 15px;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+
+        .step-content code {
+            font-family: 'SF Mono', 'Consolas', 'Courier New', monospace;
+            font-size: 14px;
+            color: var(--primary-1);
+            background: rgba(79, 70, 229, 0.08);
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        /* ===== 配置区 ===== */
+        .config {
+            padding: 100px 0;
+            background: var(--bg-light);
+        }
+
+        .config-code-wrapper {
+            max-width: 680px;
+            margin: 0 auto;
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            box-shadow: var(--shadow-lg);
+            border: 1px solid rgba(79, 70, 229, 0.08);
+        }
+
+        .config-code-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 20px;
+            background: #1E293B;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .code-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .code-dot.red {
+            background: #EF4444;
+        }
+
+        .code-dot.yellow {
+            background: #F59E0B;
+        }
+
+        .code-dot.green {
+            background: #10B981;
+        }
+
+        .code-filename {
+            margin-left: auto;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.5);
+            font-family: 'SF Mono', 'Consolas', 'Courier New', monospace;
+        }
+
+        .config-code {
+            background: #0F172A;
+            padding: 24px;
+            overflow-x: auto;
+            font-size: 14px;
+            line-height: 1.9;
+        }
+
+        .config-code code {
+            font-family: 'SF Mono', 'Consolas', 'Courier New', monospace;
+        }
+
+        .code-section {
+            color: #818CF8;
+            font-weight: 700;
+        }
+
+        .code-comment {
+            color: #64748B;
+            font-style: italic;
+        }
+
+        .code-key {
+            color: #34D399;
+        }
+
+        .code-op {
+            color: #94A3B8;
+        }
+
+        .code-val {
+            color: #FBBF24;
+        }
+
+        /* ===== 页脚 ===== */
+        .footer {
+            background: var(--bg-dark);
+            color: rgba(255, 255, 255, 0.7);
+            padding: 60px 0 40px;
+        }
+
+        .footer-inner {
+            text-align: center;
+        }
+
+        .footer-brand {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text-white);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .footer-desc {
+            font-size: 15px;
+            max-width: 400px;
+            margin: 0 auto 24px;
+            line-height: 1.7;
+        }
+
+        .footer-links {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .footer-links a {
+            color: var(--primary-3);
+            font-weight: 500;
+            transition: var(--transition);
+        }
+
+        .footer-links a:hover {
+            color: var(--text-white);
+        }
+
+        .footer-sep {
+            color: rgba(255, 255, 255, 0.2);
+        }
+
+        .footer-copy {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.35);
+        }
+
+        /* ===== 返回顶部按钮 ===== */
+        .back-to-top {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            z-index: 999;
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            background: linear-gradient(135deg, var(--primary-1), var(--primary-2));
+            color: var(--text-white);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 16px rgba(79, 70, 229, 0.3);
+            transition: var(--transition);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(12px);
+        }
+
+        .back-to-top.visible {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .back-to-top:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(79, 70, 229, 0.45);
+        }
+
+        .back-to-top svg {
+            width: 22px;
+            height: 22px;
+        }
+
+        /* ===== 响应式 ===== */
+        @media (max-width: 992px) {
+            .features-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .screenshot-gallery {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .hero-title {
+                font-size: 42px;
+            }
+
+            .section-title {
+                font-size: 30px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+                position: absolute;
+                top: var(--nav-height);
+                left: 0;
+                right: 0;
+                background: rgba(255, 255, 255, 0.95);
+                backdrop-filter: blur(20px);
+                -webkit-backdrop-filter: blur(20px);
+                padding: 16px;
+                flex-direction: column;
+                gap: 4px;
+                border-bottom: 1px solid rgba(79, 70, 229, 0.08);
+                box-shadow: var(--shadow-lg);
+            }
+
+            .nav-links.open {
+                display: flex;
+            }
+
+            .nav-links a {
+                padding: 12px 20px;
+                border-radius: var(--radius-sm);
+                width: 100%;
+                text-align: center;
+            }
+
+            .mobile-nav-toggle {
+                display: flex;
+            }
+
+            .hero-title {
+                font-size: 34px;
+            }
+
+            .hero-subtitle {
+                font-size: 18px;
+                letter-spacing: 4px;
+            }
+
+            .hero-desc {
+                font-size: 16px;
+            }
+
+            .hero-actions {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .screenshot-gallery {
+                grid-template-columns: 1fr;
+                max-width: 480px;
+                margin: 0 auto;
+            }
+
+            .features {
+                padding: 64px 0;
+            }
+
+            .screenshots {
+                padding: 64px 0;
+            }
+
+            .usage {
+                padding: 64px 0;
+            }
+
+            .config {
+                padding: 64px 0;
+            }
+
+            .section-header {
+                margin-bottom: 40px;
+            }
+
+            .section-title {
+                font-size: 26px;
+            }
+
+            .usage-step {
+                gap: 16px;
+            }
+
+            .lightbox-content {
+                max-width: 92vw;
+            }
+
+            .back-to-top {
+                bottom: 24px;
+                right: 24px;
+                width: 44px;
+                height: 44px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .hero-title {
+                font-size: 28px;
+            }
+
+            .container {
+                padding: 0 16px;
+            }
+
+            .hero-content {
+                padding: 24px 16px;
+            }
+
+            .config-code {
+                padding: 16px;
+                font-size: 13px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ========== 导航栏 ========== -->
+    <nav class="navbar">
+        <div class="container navbar-inner">
+            <a href="#hero" class="logo">
+                <span class="logo-icon">🫧</span>
+                <span class="logo-text">热键泡泡</span>
+            </a>
+            <ul class="nav-links">
+                <li><a href="#features">特色</a></li>
+                <li><a href="#screenshots">截图</a></li>
+                <li><a href="#usage">使用说明</a></li>
+                <li><a href="#config">配置</a></li>
+            </ul>
+            <button class="mobile-nav-toggle" aria-label="切换导航菜单">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- ========== Hero 区域 ========== -->
+    <section id="hero" class="hero">
+        <div class="hero-bg"></div>
+        <div class="container hero-content">
+            <div class="hero-badge">🪟 Windows 小工具</div>
+            <h1 class="hero-title">热键泡泡</h1>
+            <p class="hero-subtitle">HotBubble</p>
+            <p class="hero-desc">
+                按下 <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>Win</kbd> 等修饰键时，
+                即时弹出快捷键提示，助你快速掌握 Windows 与软件快捷操作。
+            </p>
+            <div class="hero-actions">
+                <a href="https://gitee.com/axspic/HotBubble/releases/download/v0.0.1/HotBubble%20v0.0.1.zip"
+                    class="btn btn-download" target="_blank" rel="noopener">
+                    <svg class="btn-icon" t="1778311708108" class="icon" viewBox="0 0 1024 1024" version="1.1"
+                        xmlns="http://www.w3.org/2000/svg" p-id="5544" xmlns:xlink="http://www.w3.org/1999/xlink"
+                        width="128" height="128">
+                        <path
+                            d="M512 1024C229.222 1024 0 794.778 0 512S229.222 0 512 0s512 229.222 512 512-229.222 512-512 512z m259.149-568.883h-290.74a25.293 25.293 0 0 0-25.292 25.293l-0.026 63.206c0 13.952 11.315 25.293 25.267 25.293h177.024c13.978 0 25.293 11.315 25.293 25.267v12.646a75.853 75.853 0 0 1-75.853 75.853h-240.23a25.293 25.293 0 0 1-25.267-25.293V417.203a75.853 75.853 0 0 1 75.827-75.853h353.946a25.293 25.293 0 0 0 25.267-25.292l0.077-63.207a25.293 25.293 0 0 0-25.268-25.293H417.152a189.62 189.62 0 0 0-189.62 189.645V771.15c0 13.977 11.316 25.293 25.294 25.293h372.94a170.65 170.65 0 0 0 170.65-170.65V480.384a25.293 25.293 0 0 0-25.293-25.267z"
+                            fill="#C71D23" p-id="5545"></path>
+                    </svg>
+                    从 Gitee 下载
+                </a>
+                <a href="https://github.com/wiainigi/HotBubble/releases/download/v0.0.1/HotBubble.v0.0.1.zip"
+                    class="btn btn-github" target="_blank" rel="noopener">
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+                        <path
+                            d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+                    </svg>
+                    从 GitHub 下载
+                </a>
+                <span class="hero-actions-divider">— 或者访问仓库 —</span>
+                <a href="https://gitee.com/axspic/HotBubble" class="btn btn-secondary" target="_blank" rel="noopener">
+                    <svg class="btn-icon" t="1778311708108" class="icon" viewBox="0 0 1024 1024" version="1.1"
+                        xmlns="http://www.w3.org/2000/svg" p-id="5544" xmlns:xlink="http://www.w3.org/1999/xlink"
+                        width="128" height="128">
+                        <path
+                            d="M512 1024C229.222 1024 0 794.778 0 512S229.222 0 512 0s512 229.222 512 512-229.222 512-512 512z m259.149-568.883h-290.74a25.293 25.293 0 0 0-25.292 25.293l-0.026 63.206c0 13.952 11.315 25.293 25.267 25.293h177.024c13.978 0 25.293 11.315 25.293 25.267v12.646a75.853 75.853 0 0 1-75.853 75.853h-240.23a25.293 25.293 0 0 1-25.267-25.293V417.203a75.853 75.853 0 0 1 75.827-75.853h353.946a25.293 25.293 0 0 0 25.267-25.292l0.077-63.207a25.293 25.293 0 0 0-25.268-25.293H417.152a189.62 189.62 0 0 0-189.62 189.645V771.15c0 13.977 11.316 25.293 25.294 25.293h372.94a170.65 170.65 0 0 0 170.65-170.65V480.384a25.293 25.293 0 0 0-25.293-25.267z"
+                            fill="#C71D23" p-id="5545"></path>
+                    </svg>
+                    Gitee 仓库
+                </a>
+                <a href="https://github.com/wiainigi/HotBubble" class="btn btn-secondary" target="_blank"
+                    rel="noopener">
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+                        <path
+                            d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+                    </svg>
+                    GitHub 仓库
+                </a>
+            </div>
+        </div>
+        <div class="scroll-indicator">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
+    </section>
+
+    <!-- ========== 软件特色区 ========== -->
+    <section id="features" class="features">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">Features</span>
+                <h2 class="section-title">软件特色</h2>
+                <p class="section-desc">为快捷键学习量身打造的贴心设计</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon icon-shortcut">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                            <path d="M8 12h8M12 8v8" />
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">快捷键分类</h3>
+                    <p class="feature-desc">支持系统快捷键与软件快捷键两种类型，可通过设置自由开关显示，随心所欲。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon icon-mark">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="M12 6v6l4 2" />
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">按键标记</h3>
+                    <p class="feature-desc">被按下的按键会进行醒目的颜色标记，让当前操作一目了然。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon icon-theme">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 3a1 1 0 011 1v1a1 1 0 01-2 0V4a1 1 0 011-1z" />
+                            <path d="M12 17a1 1 0 011 1v1a1 1 0 01-2 0v-1a1 1 0 011-1z" />
+                            <path d="M4.22 4.22a1 1 0 011.42 0l.7.7a1 1 0 01-1.4 1.42l-.7-.7a1 1 0 010-1.42z" />
+                            <path d="M17.66 17.66a1 1 0 011.42 0l.7.7a1 1 0 01-1.4 1.42l-.7-.7a1 1 0 010-1.42z" />
+                            <circle cx="12" cy="10" r="4" />
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">自定义主题</h3>
+                    <p class="feature-desc">自由选择背景颜色、透明度、字体大小与颜色，打造专属视觉风格。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon icon-small">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path
+                                d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">超小程序包</h3>
+                    <p class="feature-desc">软件安装包不到 1MB，秒级下载安装，轻量无负担。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon icon-memory">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="3" width="20" height="14" rx="2" />
+                            <path d="M8 21h8M12 17v4" />
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">超小内存占用</h3>
+                    <p class="feature-desc">程序后台运行时仅占用约 2MB 内存，几乎不影响系统性能。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon icon-config">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path
+                                d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" />
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">自定义配置文件</h3>
+                    <p class="feature-desc">支持根据自己使用的软件，自定义添加快捷键配置文件，灵活扩展。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon icon-position">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="9" />
+                            <circle cx="12" cy="12" r="3" />
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">位置智能识别</h3>
+                    <p class="feature-desc">根据鼠标编辑位置自动切换热键提示界面显示位置，不会盖住操作区域。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========== 软件截图区 ========== -->
+    <section id="screenshots" class="screenshots">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">Gallery</span>
+                <h2 class="section-title">软件截图</h2>
+                <p class="section-desc">一睹热键泡泡的界面风采</p>
+            </div>
+            <div class="screenshot-gallery">
+                <figure class="screenshot-item">
+                    <a href="#lightbox-about">
+                        <img src="https://img.cdn1.vip/i/69fec9e1bab0d_1778305505.webp" alt="关于界面" loading="lazy"
+                            onerror="this.parentElement.innerHTML='<div class=\'img-placeholder\'><svg viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\'><rect x=\'3\' y=\'3\' width=\'18\' height=\'18\' rx=\'2\'/><circle cx=\'8.5\' cy=\'8.5\' r=\'1.5\'/><path d=\'M21 15l-5-5L5 21\'/></svg><span>关于界面</span></div>'">
+                    </a>
+                    <figcaption>关于界面</figcaption>
+                </figure>
+                <figure class="screenshot-item">
+                    <a href="#lightbox-settings">
+                        <img src="https://img.cdn1.vip/i/69fec9fa07444_1778305530.webp" alt="设置界面" loading="lazy"
+                            onerror="this.parentElement.innerHTML='<div class=\'img-placeholder\'><svg viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\'><rect x=\'3\' y=\'3\' width=\'18\' height=\'18\' rx=\'2\'/><circle cx=\'8.5\' cy=\'8.5\' r=\'1.5\'/><path d=\'M21 15l-5-5L5 21\'/></svg><span>设置界面</span></div>'">
+                    </a>
+                    <figcaption>设置界面</figcaption>
+                </figure>
+                <figure class="screenshot-item">
+                    <a href="#lightbox-hint">
+                        <img src="https://img.cdn1.vip/i/69fecc3d443e6_1778306109.webp" alt="热键提示界面" loading="lazy"
+                            onerror="this.parentElement.innerHTML='<div class=\'img-placeholder\'><svg viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\'><rect x=\'3\' y=\'3\' width=\'18\' height=\'18\' rx=\'2\'/><circle cx=\'8.5\' cy=\'8.5\' r=\'1.5\'/><path d=\'M21 15l-5-5L5 21\'/></svg><span>热键提示界面</span></div>'">
+                    </a>
+                    <figcaption>热键提示界面</figcaption>
+                </figure>
+            </div>
+        </div>
+
+        <!-- Lightbox 模态框 -->
+        <div id="lightbox-about" class="lightbox">
+            <a href="#screenshots" class="lightbox-close">&times;</a>
+            <div class="lightbox-content">
+                <img src="https://img.cdn1.vip/i/69fec9e1bab0d_1778305505.webp" alt="关于界面" onerror="this.alt='图片加载失败'">
+                <span class="lightbox-caption">关于界面</span>
+            </div>
+        </div>
+        <div id="lightbox-settings" class="lightbox">
+            <a href="#screenshots" class="lightbox-close">&times;</a>
+            <div class="lightbox-content">
+                <img src="https://img.cdn1.vip/i/69fec9fa07444_1778305530.webp" alt="设置界面" onerror="this.alt='图片加载失败'">
+                <span class="lightbox-caption">设置界面</span>
+            </div>
+        </div>
+        <div id="lightbox-hint" class="lightbox">
+            <a href="#screenshots" class="lightbox-close">&times;</a>
+            <div class="lightbox-content">
+                <img src="https://img.cdn1.vip/i/69fecc3d443e6_1778306109.webp" alt="热键提示界面"
+                    onerror="this.alt='图片加载失败'">
+                <span class="lightbox-caption">热键提示界面</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========== 使用说明区 ========== -->
+    <section id="usage" class="usage">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">Guide</span>
+                <h2 class="section-title">使用说明</h2>
+                <p class="section-desc">快速上手，即刻体验</p>
+            </div>
+            <div class="usage-steps">
+                <div class="usage-step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>下载解压</h3>
+                        <p>下载压缩包后解压，运行 <code>HotBubble.exe</code> 即可启动。</p>
+                    </div>
+                </div>
+                <div class="usage-step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>系统托盘</h3>
+                        <p>软件运行后会在任务栏右下角显示图标，在图标上右键可以打开菜单。</p>
+                    </div>
+                </div>
+                <div class="usage-step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>退出软件</h3>
+                        <p>从右下角图标右键菜单选择「退出」即可关闭软件。</p>
+                    </div>
+                </div>
+                <div class="usage-step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h3>添加快捷键配置</h3>
+                        <p>将配置文件添加到目录下的 <code>keyboards</code> 文件夹，文件名需与软件进程名称一致。</p>
+                    </div>
+                </div>
+                <div class="usage-step">
+                    <div class="step-number">5</div>
+                    <div class="step-content">
+                        <h3>编辑配置文件</h3>
+                        <p>快捷键配置文件可自行编辑，根据需要删除或添加快捷键条目。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========== 配置文件说明区 ========== -->
+    <section id="config" class="config">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">Configuration</span>
+                <h2 class="section-title">配置文件说明</h2>
+                <p class="section-desc">配置文件存放在 <code>keyboards/软件进程名.ini</code></p>
+            </div>
+            <div class="config-code-wrapper">
+                <div class="config-code-header">
+                    <span class="code-dot red"></span>
+                    <span class="code-dot yellow"></span>
+                    <span class="code-dot green"></span>
+                    <span class="code-filename">keyboards/Windows.ini</span>
+                </div>
+                <pre class="config-code"><code><span class="code-section">[Info]</span>
+<span class="code-comment"># 软件名称（如果软件名称和软件说明都省略则默认显示软件进程名）</span>
+<span class="code-key">Name</span><span class="code-op">=</span><span class="code-val">Windows</span>
+<span class="code-comment"># 软件说明</span>
+<span class="code-key">Description</span><span class="code-op">=</span><span class="code-val">系统默认</span>
+
+<span class="code-section">[Keys]</span>
+<span class="code-key">Win</span><span class="code-op">=</span><span class="code-val">打开/关闭开始菜单</span>
+<span class="code-comment"># 快捷键使用 + 号连接</span>
+<span class="code-key">Win+D</span><span class="code-op">=</span><span class="code-val">显示桌面</span>
+<span class="code-key">Win+E</span><span class="code-op">=</span><span class="code-val">打开文件资源管理器</span></code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========== 页脚 ========== -->
+    <footer class="footer">
+        <div class="container footer-inner">
+            <div class="footer-brand">
+                <span class="logo-icon">🫧</span>
+                <span>热键泡泡</span>
+            </div>
+            <p class="footer-desc">
+                一款轻量级 Windows 快捷键提示小工具，助你快速掌握各类快捷键操作。
+            </p>
+            <div class="footer-links">
+                <a href="https://github.com/wiainigi/HotBubble" target="_blank" rel="noopener">GitHub</a>
+                <span class="footer-sep">·</span>
+                <a href="https://gitee.com/axspic/HotBubble" target="_blank" rel="noopener">Gitee</a>
+            </div>
+            <p class="footer-copy">&copy; 2024-<span id="current-year"></span> HotBubble. Built with C++.</p>
+        </div>
+    </footer>
+
+    <!-- ========== 返回顶部按钮 ========== -->
+    <button id="back-to-top" class="back-to-top" aria-label="返回顶部">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M18 15l-6-6-6 6" />
+        </svg>
+    </button>
+
+    <script>
+        (function () {
+            'use strict';
+
+            var navbar = document.querySelector('.navbar');
+            var backToTop = document.getElementById('back-to-top');
+            var mobileToggle = document.querySelector('.mobile-nav-toggle');
+            var navLinks = document.querySelector('.nav-links');
+            var currentYear = document.getElementById('current-year');
+            var body = document.body;
+
+            // ===== 当前年份 =====
+            if (currentYear) {
+                currentYear.textContent = new Date().getFullYear();
+            }
+
+            // ===== 页面加载淡入效果 =====
+            body.style.opacity = '0';
+            body.style.transition = 'opacity 0.5s ease';
+            requestAnimationFrame(function () {
+                body.style.opacity = '1';
+            });
+
+            // ===== 导航栏滚动效果 =====
+            function updateNavbar() {
+                if (window.scrollY > 40) {
+                    navbar.classList.add('scrolled');
+                } else {
+                    navbar.classList.remove('scrolled');
+                }
+            }
+
+            window.addEventListener('scroll', updateNavbar, { passive: true });
+            updateNavbar();
+
+            // ===== 返回顶部按钮 =====
+            function updateBackToTop() {
+                if (window.scrollY > 400) {
+                    backToTop.classList.add('visible');
+                } else {
+                    backToTop.classList.remove('visible');
+                }
+            }
+
+            window.addEventListener('scroll', updateBackToTop, { passive: true });
+            updateBackToTop();
+
+            backToTop.addEventListener('click', function () {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+
+            // ===== 移动端菜单切换 =====
+            if (mobileToggle && navLinks) {
+                mobileToggle.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    navLinks.classList.toggle('open');
+                });
+
+                // 点击导航链接后关闭菜单
+                navLinks.querySelectorAll('a').forEach(function (link) {
+                    link.addEventListener('click', function () {
+                        navLinks.classList.remove('open');
+                    });
+                });
+
+                // 点击页面其他区域关闭菜单
+                document.addEventListener('click', function (e) {
+                    if (!navLinks.contains(e.target) && !mobileToggle.contains(e.target)) {
+                        navLinks.classList.remove('open');
+                    }
+                });
+            }
+
+            // ===== Lightbox 关闭增强：点击遮罩关闭 =====
+            document.querySelectorAll('.lightbox').forEach(function (lb) {
+                lb.addEventListener('click', function (e) {
+                    if (e.target === lb) {
+                        window.location.hash = '#screenshots';
+                    }
+                });
+
+                // ESC 键关闭
+                document.addEventListener('keydown', function (e) {
+                    if (e.key === 'Escape' && window.location.hash === '#' + lb.id) {
+                        window.location.hash = '#screenshots';
+                    }
+                });
+            });
+
+            // ===== 激活的导航高亮 =====
+            var navAnchors = navLinks ? navLinks.querySelectorAll('a') : [];
+
+            function updateActiveNav() {
+                var scrollY = window.scrollY + 100;
+                var currentId = '';
+
+                document.querySelectorAll('section[id]').forEach(function (section) {
+                    var top = section.offsetTop;
+                    var bottom = top + section.offsetHeight;
+                    if (scrollY >= top && scrollY < bottom) {
+                        currentId = section.id;
+                    }
+                });
+
+                navAnchors.forEach(function (a) {
+                    var href = a.getAttribute('href').replace('#', '');
+                    if (href === currentId) {
+                        a.style.color = 'var(--primary-1)';
+                        a.style.background = 'rgba(79, 70, 229, 0.08)';
+                    } else {
+                        a.style.color = '';
+                        a.style.background = '';
+                    }
+                });
+            }
+
+            window.addEventListener('scroll', updateActiveNav, { passive: true });
+            updateActiveNav();
+
+        })();
+    </script>
+
+</body>
+
+</html>
