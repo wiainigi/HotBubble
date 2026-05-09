@@ -26,8 +26,8 @@ static const wchar_t CLASS_NAME[] = L"BubbleWindowClass";
 //  extern int      g_nTitleSize;   标题文字大小
 //  extern int      g_nLabelSize;   标签文字大小
 //  extern int      g_nBgAlpha;     窗口背景颜色透明度 0-255
-//  extern bool     g_iShowWindows; 是否显示系统热键
-//  extern bool     g_iShowProcess; 是否显示程序热键
+//  extern bool     g_bShowWindows; 是否显示系统热键
+//  extern bool     g_bShowProcess; 是否显示程序热键
 //  extern COLORREF g_crTitle;      标题文字颜色
 //  extern COLORREF g_crLabel;      标签文字颜色
 //  extern COLORREF g_crBg;         窗口背景颜色

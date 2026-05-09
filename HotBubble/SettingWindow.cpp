@@ -9,6 +9,29 @@
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "msimg32.lib")
 
+// 此段内容是全局申明的变量，重新生成代码时保留此段代码注释
+//  extern int      g_nTitleSize;   标题文字大小
+//  extern int      g_nLabelSize;   标签文字大小
+//  extern int      g_nBgAlpha;     窗口背景颜色透明度 0-255
+//  extern bool     g_bShowWindows; 是否显示系统快捷键
+//  extern bool     g_bShowProcess; 是否显示程序快捷键
+//  extern COLORREF g_crTitle;      标题文字颜色
+//  extern COLORREF g_crLabel;      标签文字颜色
+//  extern COLORREF g_crBg;         窗口背景颜色
+//  extern COLORREF g_crMark;       标记文字颜色
+
+// 此段内容是配置文件config.ini所有内容，重新生成代码时保留此段代码注释
+//  [UIConfig]
+//  titleFontSize = 10
+//  cardFontSize = 8
+//  bgAlpha = 200
+//  bgColor = 0, 0, 0
+//  activeTextColor = 255, 60, 60
+//  labelTextColor = 255, 255, 255
+//  titleTextColor = 255, 255, 255
+//  showWindows = 1
+//  showProcess = 1
+
 #define IDC_EDIT_TITLE_SIZE         1101
 #define IDC_EDIT_LABEL_SIZE         1102
 #define IDC_BTN_TITLE_COLOR         1201
